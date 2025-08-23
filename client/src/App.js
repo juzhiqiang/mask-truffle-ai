@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Web3ReactProvider } from '@web3-react/core';
 import { Web3Provider } from '@ethersproject/providers';
-import { Layout, Card, Input, Button, Select, Table, Space, Modal, Form, message, Tag, Statistic } from 'antd';
-import { SearchOutlined, PlusOutlined, WalletOutlined, DatabaseOutlined } from '@ant-design/icons';
+import { Layout, Card, Input, Button, Select, Table, Space, Modal, Form, message, Tag, Statistic, Row, Col } from 'antd';
+import { SearchOutlined, PlusOutlined, WalletOutlined, DatabaseOutlined, LeftOutlined } from '@ant-design/icons';
 import WalletConnection from './components/WalletConnection';
 import DataStorageService from './services/DataStorageService';
 import './App.css';
 
-const { Header, Content, Sider } = Layout;
+const { Header, Content } = Layout;
 const { Option } = Select;
 const { TextArea } = Input;
 
@@ -135,7 +135,7 @@ function App() {
       key: 'content',
       ellipsis: true,
       render: (content) => (
-        <div style={{ maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <div style={{ maxWidth: 400, overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {content}
         </div>
       )
@@ -173,112 +173,141 @@ function App() {
 
   return (
     <Web3ReactProvider getLibrary={getLibrary}>
-      <Layout style={{ minHeight: '100vh' }}>
-        <Header style={{ background: '#001529', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ color: 'white', fontSize: '18px', fontWeight: 'bold' }}>
-            <DatabaseOutlined style={{ marginRight: '8px' }} />
-            数据上链系统
+      <Layout style={{ minHeight: '100vh', background: '#f0f2f5' }}>
+        {/* 顶部Header */}
+        <Header className="header">
+          <div className="header-left">
+            <DatabaseOutlined style={{ marginRight: '8px', fontSize: '18px' }} />
+            <span className="header-title">数据上链系统</span>
           </div>
-          <WalletConnection onAccountChange={setAccount} />
+          
+          <div className="header-right">
+            <Space>
+              {/* 网络选择器 */}
+              <Select defaultValue="ETH" style={{ width: 80 }} size="small">
+                <Option value="ETH">ETH</Option>
+                <Option value="BSC">BSC</Option>
+                <Option value="Polygon">Polygon</Option>
+              </Select>
+              
+              {/* 测试标识 */}
+              <div className="test-badge">
+                <div>测试</div>
+                <div>未编</div>
+              </div>
+              
+              {/* 钱包连接 */}
+              <WalletConnection onAccountChange={setAccount} />
+            </Space>
+          </div>
         </Header>
         
-        <Layout>
-          <Sider width={300} style={{ background: '#f0f2f5', padding: '24px' }}>
-            <Card title="数据上链记录" size="small" style={{ marginBottom: '16px' }}>
-              <Space direction="vertical" style={{ width: '100%' }}>
-                <Statistic title="总记录数" value={stats.total} />
-                <Statistic title="活跃记录" value={stats.active} />
-              </Space>
-            </Card>
-
-            <Card title="查询条件" size="small">
-              <Space direction="vertical" style={{ width: '100%' }}>
-                <Select
-                  style={{ width: '100%' }}
-                  value={searchType}
-                  onChange={setSearchType}
-                  placeholder="选择查询类型"
-                >
-                  <Option value="all">查看全部</Option>
-                  <Option value="type">按类型查询</Option>
-                  <Option value="creator">按创建者查询</Option>
-                  <Option value="id">按ID查询</Option>
-                </Select>
-                
-                {searchType !== 'all' && (
-                  <Input
-                    placeholder={
-                      searchType === 'type' ? '输入数据类型' :
-                      searchType === 'creator' ? '输入创建者地址' :
-                      '输入记录ID'
-                    }
-                    value={searchValue}
-                    onChange={(e) => setSearchValue(e.target.value)}
-                  />
-                )}
-                
-                <Button
-                  type="primary"
-                  icon={<SearchOutlined />}
-                  onClick={handleSearch}
-                  loading={loading}
-                  style={{ width: '100%' }}
-                >
-                  查询
-                </Button>
-                
-                <Button
-                  type="dashed"
-                  icon={<PlusOutlined />}
-                  onClick={() => setIsModalVisible(true)}
-                  disabled={!account}
-                  style={{ width: '100%' }}
-                >
-                  添加数据
-                </Button>
-              </Space>
-            </Card>
-
-            <div style={{ marginTop: '16px', padding: '12px', background: '#fff', borderRadius: '6px', fontSize: '12px' }}>
-              <div><strong>数据类型示例：</strong></div>
-              <div>• transaction (交易数据)</div>
-              <div>• contract (合约数据)</div>
-              <div>• user (用户数据)</div>
-              <div>• log (日志数据)</div>
-            </div>
-          </Sider>
+        <Content className="main-content">
+          {/* 查询方式选择器 */}
+          <div className="query-selector">
+            <Space>
+              <Button 
+                type={searchType === 'transfer' ? 'primary' : 'default'}
+                onClick={() => setSearchType('transfer')}
+              >
+                转账方式
+              </Button>
+              <Button 
+                type={searchType === 'address' ? 'primary' : 'default'}
+                onClick={() => setSearchType('address')}
+              >
+                自定义式
+              </Button>
+              <Button 
+                type={searchType === 'usdt' ? 'primary' : 'default'}
+                onClick={() => setSearchType('usdt')}
+              >
+                查送USDT的方式
+              </Button>
+            </Space>
+          </div>
           
-          <Content style={{ padding: '24px' }}>
-            <Card 
-              title="数据查询结果" 
-              style={{ height: '100%' }}
-              extra={
-                <Space>
-                  <span>共 {dataRecords.length} 条记录</span>
-                  {account && (
-                    <Tag color="green">
-                      <WalletOutlined /> 已连接钱包
-                    </Tag>
-                  )}
-                </Space>
-              }
-            >
-              <Table
-                columns={columns}
-                dataSource={dataRecords}
-                rowKey="id"
-                loading={loading}
-                pagination={{
-                  showSizeChanger: true,
-                  showQuickJumper: true,
-                  showTotal: (total) => `总共 ${total} 条记录`,
+          {/* 主要输入区域 */}
+          <Card className="main-input-card">
+            <div className="input-area">
+              <Input.TextArea
+                placeholder="请输入查询内容..."
+                rows={8}
+                value={searchValue}
+                onChange={(e) => setSearchValue(e.target.value)}
+                style={{ 
+                  border: '2px solid #d9d9d9',
+                  borderRadius: '4px',
+                  fontSize: '14px'
                 }}
-                scroll={{ x: 800 }}
               />
-            </Card>
-          </Content>
-        </Layout>
+            </div>
+          </Card>
+          
+          {/* 操作按钮区域 */}
+          <div className="action-buttons">
+            <Space>
+              <Button
+                type="primary"
+                icon={<SearchOutlined />}
+                onClick={handleSearch}
+                loading={loading}
+                size="large"
+              >
+                查询
+              </Button>
+              
+              <Button
+                icon={<PlusOutlined />}
+                onClick={() => setIsModalVisible(true)}
+                disabled={!account}
+                size="large"
+              >
+                添加数据
+              </Button>
+            </Space>
+          </div>
+          
+          {/* 返回按钮 */}
+          <div className="back-button">
+            <Button 
+              icon={<LeftOutlined />} 
+              type="text"
+            >
+              返回
+            </Button>
+          </div>
+          
+          {/* 数据记录展示区域 */}
+          <Card className="records-card" title="数据上链的记录">
+            <div className="search-box">
+              <Input
+                placeholder="search（请作为上indexed）"
+                prefix={<SearchOutlined />}
+                style={{ width: 300, marginBottom: 16 }}
+                allowClear
+              />
+            </div>
+            
+            {/* 记录表格 */}
+            <Table
+              columns={columns}
+              dataSource={dataRecords}
+              rowKey="id"
+              loading={loading}
+              pagination={{
+                showSizeChanger: true,
+                showQuickJumper: true,
+                showTotal: (total) => `总共 ${total} 条记录`,
+                pageSize: 10
+              }}
+              scroll={{ x: 800, y: 400 }}
+              size="small"
+            />
+          </Card>
+        </Content>
         
+        {/* 添加数据的模态框 */}
         <Modal
           title="添加新数据"
           visible={isModalVisible}
@@ -287,6 +316,7 @@ function App() {
             form.resetFields();
           }}
           footer={null}
+          width={600}
         >
           <Form
             form={form}
@@ -306,19 +336,19 @@ function App() {
               name="content"
               rules={[{ required: true, message: '请输入数据内容' }]}
             >
-              <TextArea rows={4} placeholder="输入要上链的数据内容" />
+              <TextArea rows={6} placeholder="输入要上链的数据内容" />
             </Form.Item>
             
-            <Form.Item style={{ marginBottom: 0 }}>
+            <Form.Item style={{ marginBottom: 0, textAlign: 'right' }}>
               <Space>
-                <Button type="primary" htmlType="submit">
-                  上链
-                </Button>
                 <Button onClick={() => {
                   setIsModalVisible(false);
                   form.resetFields();
                 }}>
                   取消
+                </Button>
+                <Button type="primary" htmlType="submit">
+                  上链
                 </Button>
               </Space>
             </Form.Item>
