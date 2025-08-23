@@ -387,7 +387,7 @@ const WalletConnection = ({ onAccountChange }) => {
               border: '2px solid #f0f0f0',
               borderRadius: '12px'
             }}
-            bodyStyle={{ padding: '24px' }}
+            styles={{ body: { padding: '24px' } }}
             loading={connecting}
           >
             <Space size="large">
