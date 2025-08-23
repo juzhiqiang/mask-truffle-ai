@@ -459,20 +459,15 @@ function App() {
           
           <div className="header-right">
             <Space>
-              {/* 网络选择器 */}
-              <Select defaultValue="ETH" style={{ width: 80 }} size="small">
-                <Option value="ETH">ETH</Option>
-                <Option value="BSC">BSC</Option>
-                <Option value="Polygon">Polygon</Option>
-              </Select>
+              {/* 只有连接钱包后才显示测试标识 */}
+              {account && (
+                <div className="test-badge">
+                  <div>测试</div>
+                  <div>未编</div>
+                </div>
+              )}
               
-              {/* 测试标识 */}
-              <div className="test-badge">
-                <div>测试</div>
-                <div>未编</div>
-              </div>
-              
-              {/* 钱包连接 */}
+              {/* 钱包连接组件 */}
               <WalletConnection onAccountChange={setAccount} />
             </Space>
           </div>
@@ -568,18 +563,20 @@ function App() {
               </Button>
             </div>
             
-            {/* 统计信息 */}
-            <Row gutter={16} style={{ marginBottom: 16 }}>
-              <Col span={8}>
-                <Statistic title="总记录数" value={stats.total} />
-              </Col>
-              <Col span={8}>
-                <Statistic title="活跃记录" value={stats.active} />
-              </Col>
-              <Col span={8}>
-                <Statistic title="在线用户" value={account ? 1 : 0} />
-              </Col>
-            </Row>
+            {/* 统计信息 - 只有连接钱包后才显示 */}
+            {account && (
+              <Row gutter={16} style={{ marginBottom: 16 }}>
+                <Col span={8}>
+                  <Statistic title="总记录数" value={stats.total} />
+                </Col>
+                <Col span={8}>
+                  <Statistic title="活跃记录" value={stats.active} />
+                </Col>
+                <Col span={8}>
+                  <Statistic title="在线用户" value={account ? 1 : 0} />
+                </Col>
+              </Row>
+            )}
             
             {/* 记录表格 */}
             <Table
