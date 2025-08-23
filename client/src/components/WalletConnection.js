@@ -3,6 +3,7 @@ import { useWeb3React } from '@web3-react/core';
 import { InjectedConnector } from '@web3-react/injected-connector';
 import { Button, Modal, Card, Space, message, Tag, Alert, Select, Avatar, Dropdown, Menu, Divider } from 'antd';
 import { WalletOutlined, DisconnectOutlined, ExclamationCircleOutlined, UserOutlined, SwapOutlined, CopyOutlined, CheckOutlined } from '@ant-design/icons';
+import { ethers } from 'ethers';
 
 const { Option } = Select;
 
@@ -93,7 +94,7 @@ const WalletConnection = ({ onAccountChange }) => {
     if (library && account) {
       try {
         const balance = await library.getBalance(account);
-        setBalance(parseFloat(library.utils.formatEther(balance)).toFixed(4));
+        setBalance(parseFloat(ethers.utils.formatEther(balance)).toFixed(4));
       } catch (error) {
         console.error('获取余额失败:', error);
         setBalance('0');
