@@ -124,127 +124,139 @@ mask-truffle-ai/
 │   └── package.json
 ├── truffle-config.js         # Truffle配置
 ├── package.json              # 项目依赖
-└── README.md
+└── .env.example              # 环境变量模板
 ```
 
-## 💡 功能说明
+## 💡 使用指南
 
-### 智能合约功能
-- **数据存储** (`storeData`): 将数据存储到区块链
-- **数据查询** (`getDataRecord`): 根据ID查询单条记录
-- **批量查询** (`getActiveRecords`): 分页查询活跃记录
-- **类型查询** (`getRecordsByType`): 按数据类型查询
-- **创建者查询** (`getRecordsByCreator`): 按创建者查询
-- **数据更新** (`updateData`): 更新现有数据
-- **数据停用** (`deactivateData`): 停用数据记录
-- **统计信息** (`getStats`): 获取统计数据
+### 连接钱包
+1. 确保已安装MetaMask浏览器扩展
+2. 点击右上角的"连接钱包"按钮
+3. 在弹出的MetaMask中确认连接
+4. 连接成功后可以看到钱包地址和网络信息
 
-### 前端功能
-- **钱包连接**: 支持MetaMask连接和断开
-- **数据上链**: 表单提交数据到区块链
-- **多种查询**: 支持全部、类型、创建者、ID查询
-- **数据展示**: 表格形式展示查询结果
-- **实时统计**: 显示总记录数和活跃记录数
-- **响应式设计**: 适配不同屏幕尺寸
+### 数据上链
+1. 点击侧边栏的"添加数据"按钮
+2. 输入数据类型和内容
+3. 点击"上链"按钮
+4. 在MetaMask中确认交易
+5. 等待交易完成
+
+### 数据查询
+- **查看全部**: 显示所有活跃的数据记录
+- **按类型查询**: 输入数据类型进行筛选
+- **按创建者查询**: 输入钱包地址查询该地址创建的数据
+- **按ID查询**: 输入记录ID查询特定数据
+
+### 数据管理
+- 查看数据详情、创建时间和创建者
+- 支持数据分页浏览
+- 实时统计显示总记录数和活跃记录数
 
 ## 🧪 测试
 
-### 运行合约测试
+运行智能合约测试：
 ```bash
-npm run test
+npm test
 # 或者
 truffle test
 ```
 
-### 测试网络交互
-1. 确保MetaMask已连接到正确的网络
-2. 确保账户有足够的测试ETH
-3. 在前端界面进行各种操作测试
+测试覆盖以下功能：
+- 数据存储功能
+- 数据检索功能
+- 数据更新功能
+- 权限控制
+- 数据分页
 
-## 📝 使用说明
+## 📝 智能合约功能
 
-### 1. 连接钱包
-- 点击右上角"连接钱包"按钮
-- 选择MetaMask并授权连接
-- 确认网络切换（如需要）
+### DataStorage.sol 主要方法
 
-### 2. 查询数据
-- 在左侧面板选择查询类型
-- 输入查询条件（如适用）
-- 点击"查询"按钮查看结果
+- `storeData(string dataType, string content)`: 存储数据到区块链
+- `getDataRecord(uint256 recordId)`: 根据ID获取数据记录
+- `getActiveRecords(uint256 offset, uint256 limit)`: 分页获取活跃记录
+- `getRecordsByType(string dataType)`: 根据类型获取记录ID列表
+- `getRecordsByCreator(address creator)`: 根据创建者获取记录ID列表
+- `updateData(uint256 recordId, string newContent)`: 更新数据内容
+- `deactivateData(uint256 recordId)`: 停用数据记录
+- `getStats()`: 获取统计信息
 
-### 3. 添加数据
-- 点击"添加数据"按钮
-- 填写数据类型和内容
-- 确认交易并等待上链
+### 事件
+- `DataStored`: 数据存储事件
+- `DataUpdated`: 数据更新事件
+- `DataDeactivated`: 数据停用事件
 
-### 4. 数据类型示例
-- `transaction`: 交易相关数据
-- `contract`: 合约相关数据
-- `user`: 用户相关数据
-- `log`: 日志数据
-- 或自定义类型
+## 🌐 网络配置
 
-## 🔐 安全注意事项
+### 支持的网络
+- **Mainnet**: 以太坊主网
+- **Sepolia**: 测试网络
+- **Development**: 本地Ganache网络
 
-- **私钥安全**: 永远不要在代码中硬编码私钥
-- **网络确认**: 部署前确认目标网络
-- **合约验证**: 在区块链浏览器上验证合约源码
-- **权限管理**: 注意合约的所有者权限
-- **Gas费用**: 注意交易的Gas费用设置
+### 网络切换
+在MetaMask中切换到对应网络，应用会自动检测并连接。
 
-## 🚀 部署到生产环境
+## 🔐 安全特性
 
-### 1. 主网部署
-```bash
-# 确保.env文件配置正确
-truffle migrate --network mainnet
+- **访问控制**: 只有数据创建者可以更新或停用自己的数据
+- **重入攻击防护**: 使用OpenZeppelin的ReentrancyGuard
+- **所有权管理**: 合约所有者具有管理权限
+- **数据验证**: 严格的输入验证和错误处理
 
-# 验证合约（可选）
-truffle run verify DataStorage --network mainnet
-```
+## 🚧 开发计划
 
-### 2. 前端部署
-```bash
-# 构建生产版本
-cd client
-npm run build
-
-# 部署到静态托管服务（如Netlify, Vercel等）
-```
+- [ ] 添加数据加密功能
+- [ ] 实现数据批量操作
+- [ ] 添加数据导入/导出功能
+- [ ] 支持更多钱包连接方式
+- [ ] 优化gas费用消耗
+- [ ] 添加数据可视化图表
+- [ ] 实现多语言支持
+- [ ] 添加数据备份功能
 
 ## 🤝 贡献指南
 
-1. Fork 本仓库
-2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
+1. Fork 这个仓库
+2. 创建你的特性分支 (`git checkout -b feature/AmazingFeature`)
+3. 提交你的更改 (`git commit -m 'Add some AmazingFeature'`)
 4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 打开 Pull Request
+5. 打开一个 Pull Request
 
 ## 📄 许可证
 
-本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情。
+这个项目使用 MIT 许可证。查看 [LICENSE](LICENSE) 文件了解更多详情。
 
-## 🙋‍♂️ 常见问题
+## 🆘 故障排除
 
-### Q: MetaMask连接失败怎么办？
-A: 确保已安装MetaMask扩展，并且浏览器允许访问。检查网络连接和账户解锁状态。
+### 常见问题
 
-### Q: 合约部署失败？
-A: 检查网络配置、账户余额、Gas设置。确保Infura项目ID和助记词正确。
+**Q: MetaMask连接失败**
+A: 确保已安装MetaMask扩展，并且已解锁钱包
 
-### Q: 前端显示"Contract not initialized"？
-A: 确保合约已正确部署，并且在DataStorageService.js中配置了正确的合约地址。
+**Q: 交易失败**
+A: 检查钱包余额是否足够支付gas费用，确认网络设置正确
 
-### Q: 交易失败？
-A: 检查账户ETH余额、Gas设置、网络拥堵情况。确保合约方法调用参数正确。
+**Q: 找不到合约**
+A: 确保合约已正确部署，并且前端配置了正确的合约地址
 
-## 📞 联系我们
+**Q: 数据加载失败**
+A: 检查网络连接，确认连接到正确的区块链网络
 
-- 项目地址: [GitHub Repository](https://github.com/juzhiqiang/mask-truffle-ai)
-- 问题反馈: [Issues](https://github.com/juzhiqiang/mask-truffle-ai/issues)
-- 邮箱: your-email@example.com
+### 获取帮助
+- 提交 [GitHub Issues](https://github.com/juzhiqiang/mask-truffle-ai/issues)
+- 查看项目文档
+- 联系项目维护者
+
+## 🙏 致谢
+
+感谢以下开源项目：
+- [Truffle Suite](https://trufflesuite.com/)
+- [OpenZeppelin](https://openzeppelin.com/)
+- [React](https://reactjs.org/)
+- [Ant Design](https://ant.design/)
+- [Ethers.js](https://ethers.io/)
 
 ---
 
-**感谢使用 Mask Truffle AI 区块链数据上链系统！** 🎉
+**⭐ 如果这个项目对你有帮助，请给个Star支持一下！**
