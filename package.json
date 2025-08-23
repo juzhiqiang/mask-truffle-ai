@@ -1,0 +1,30 @@
+{
+  "name": "mask-truffle-ai",
+  "version": "1.0.0",
+  "description": "基于Truffle和React的区块链数据上链系统 - Blockchain Data Query System with Truffle and React",
+  "scripts": {
+    "dev": "cd client && npm start",
+    "build": "cd client && npm run build",
+    "compile": "truffle compile",
+    "migrate": "truffle migrate",
+    "test": "truffle test",
+    "install-all": "npm install && cd client && npm install"
+  },
+  "keywords": [
+    "blockchain",
+    "ethereum",
+    "truffle",
+    "react",
+    "web3",
+    "smart-contracts"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "devDependencies": {
+    "@truffle/hdwallet-provider": "^2.1.15",
+    "truffle": "^5.11.5"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^4.9.3"
+  }
+}
