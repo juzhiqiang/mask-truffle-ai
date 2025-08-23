@@ -3,12 +3,19 @@
   "version": "1.0.0",
   "description": "基于Truffle和React的区块链数据上链系统 - Blockchain Data Query System with Truffle and React",
   "scripts": {
+    "setup": "node scripts/setup.js",
     "dev": "cd client && npm start",
     "build": "cd client && npm run build",
     "compile": "truffle compile",
     "migrate": "truffle migrate",
+    "migrate:reset": "truffle migrate --reset",
+    "migrate:sepolia": "truffle migrate --network sepolia",
     "test": "truffle test",
-    "install-all": "npm install && cd client && npm install"
+    "test:coverage": "truffle run coverage",
+    "console": "truffle console",
+    "install-all": "npm install && cd client && npm install",
+    "clean": "rm -rf build/ && cd client && rm -rf build/",
+    "ganache": "ganache --deterministic --accounts 10 --host 0.0.0.0 --port 8545"
   },
   "keywords": [
     "blockchain",
@@ -16,15 +23,31 @@
     "truffle",
     "react",
     "web3",
-    "smart-contracts"
+    "smart-contracts",
+    "defi",
+    "data-storage"
   ],
-  "author": "Your Name",
+  "author": "Your Name <your.email@example.com>",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/juzhiqiang/mask-truffle-ai.git"
+  },
+  "bugs": {
+    "url": "https://github.com/juzhiqiang/mask-truffle-ai/issues"
+  },
+  "homepage": "https://github.com/juzhiqiang/mask-truffle-ai#readme",
   "devDependencies": {
     "@truffle/hdwallet-provider": "^2.1.15",
-    "truffle": "^5.11.5"
+    "truffle": "^5.11.5",
+    "dotenv": "^16.3.1",
+    "chai": "^4.3.7"
   },
   "dependencies": {
     "@openzeppelin/contracts": "^4.9.3"
+  },
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
   }
 }
