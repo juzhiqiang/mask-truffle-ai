@@ -1,0 +1,260 @@
+@import '~antd/dist/reset.css';
+
+.App {
+  text-align: center;
+}
+
+.ant-layout-header {
+  position: fixed;
+  z-index: 1;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ant-layout-content {
+  margin-top: 64px;
+  padding: 24px;
+  min-height: calc(100vh - 64px);
+}
+
+.ant-layout-sider {
+  position: fixed;
+  height: calc(100vh - 64px);
+  left: 0;
+  top: 64px;
+  overflow: auto;
+  background: #f0f2f5;
+}
+
+.ant-layout-content {
+  margin-left: 300px;
+}
+
+.search-panel {
+  margin-bottom: 24px;
+}
+
+.data-table {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.wallet-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: white;
+}
+
+.chain-badge {
+  background: #52c41a;
+  color: white;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.address-badge {
+  background: #1890ff;
+  color: white;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 12px;
+}
+
+.data-record-card {
+  margin-bottom: 16px;
+  transition: all 0.3s;
+}
+
+.data-record-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.record-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.record-id {
+  background: #1890ff;
+  color: white;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-weight: bold;
+  font-size: 12px;
+}
+
+.record-type {
+  background: #52c41a;
+  color: white;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 12px;
+}
+
+.record-content {
+  margin: 8px 0;
+  padding: 8px;
+  background: #f5f5f5;
+  border-left: 3px solid #1890ff;
+  border-radius: 4px;
+  text-align: left;
+  word-break: break-word;
+}
+
+.record-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: #666;
+  margin-top: 8px;
+}
+
+.creator-address {
+  font-family: monospace;
+  background: #f0f0f0;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+
+.timestamp {
+  color: #999;
+}
+
+.status-active {
+  color: #52c41a;
+  font-weight: bold;
+}
+
+.status-inactive {
+  color: #ff4d4f;
+  font-weight: bold;
+}
+
+.stats-card {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  margin-bottom: 16px;
+}
+
+.stats-card .ant-statistic-title {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.stats-card .ant-statistic-content {
+  color: white;
+}
+
+.search-form {
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.help-text {
+  background: #f6ffed;
+  border: 1px solid #b7eb8f;
+  border-radius: 6px;
+  padding: 12px;
+  margin-top: 16px;
+  font-size: 12px;
+  color: #389e0d;
+}
+
+.help-text strong {
+  color: #237804;
+}
+
+/* 响应式设计 */
+@media (max-width: 1200px) {
+  .ant-layout-sider {
+    width: 250px !important;
+    min-width: 250px !important;
+    max-width: 250px !important;
+  }
+  
+  .ant-layout-content {
+    margin-left: 250px;
+  }
+}
+
+@media (max-width: 992px) {
+  .ant-layout-sider {
+    display: none;
+  }
+  
+  .ant-layout-content {
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 768px) {
+  .ant-layout-header {
+    padding: 0 16px;
+  }
+  
+  .ant-layout-content {
+    padding: 16px;
+  }
+}
+
+/* 表格样式优化 */
+.ant-table-thead > tr > th {
+  background: #fafafa;
+  font-weight: 600;
+}
+
+.ant-table-tbody > tr:hover > td {
+  background: #e6f7ff;
+}
+
+/* 按钮样式优化 */
+.ant-btn-primary {
+  border-radius: 6px;
+  box-shadow: 0 2px 4px rgba(24, 144, 255, 0.2);
+}
+
+.ant-btn-primary:hover {
+  box-shadow: 0 4px 8px rgba(24, 144, 255, 0.3);
+  transform: translateY(-1px);
+}
+
+/* 卡片样式优化 */
+.ant-card {
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  border: none;
+}
+
+.ant-card-head {
+  border-radius: 8px 8px 0 0;
+  background: linear-gradient(90deg, #f0f2f5 0%, #ffffff 100%);
+}
+
+/* 模态框样式 */
+.ant-modal-header {
+  border-radius: 8px 8px 0 0;
+  background: linear-gradient(90deg, #1890ff 0%, #096dd9 100%);
+}
+
+.ant-modal-title {
+  color: white;
+}
+
+.ant-modal-close {
+  color: white;
+}
+
+.ant-modal-close:hover {
+  color: rgba(255, 255, 255, 0.8);
+}
