@@ -1,260 +1,440 @@
 @import '~antd/dist/reset.css';
 
 .App {
-  text-align: center;
+  background: #f0f2f5;
+  min-height: 100vh;
 }
 
-.ant-layout-header {
-  position: fixed;
-  z-index: 1;
-  width: 100%;
+/* Header样式 */
+.header {
+  background: #001529;
+  padding: 0 24px;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  height: 64px;
+  position: fixed;
+  width: 100%;
+  top: 0;
+  z-index: 1000;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
-.ant-layout-content {
+.header-left {
+  display: flex;
+  align-items: center;
+  color: white;
+}
+
+.header-title {
+  font-size: 18px;
+  font-weight: bold;
+  color: white;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+}
+
+.test-badge {
+  background: white;
+  color: #001529;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  text-align: center;
+  line-height: 1.2;
+  margin-right: 16px;
+}
+
+/* 主内容区域 */
+.main-content {
   margin-top: 64px;
   padding: 24px;
   min-height: calc(100vh - 64px);
-}
-
-.ant-layout-sider {
-  position: fixed;
-  height: calc(100vh - 64px);
-  left: 0;
-  top: 64px;
-  overflow: auto;
   background: #f0f2f5;
 }
 
-.ant-layout-content {
-  margin-left: 300px;
-}
-
-.search-panel {
-  margin-bottom: 24px;
-}
-
-.data-table {
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
-}
-
-.wallet-info {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: white;
-}
-
-.chain-badge {
-  background: #52c41a;
-  color: white;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 12px;
-}
-
-.address-badge {
-  background: #1890ff;
-  color: white;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-family: monospace;
-  font-size: 12px;
-}
-
-.data-record-card {
+/* 查询方式选择器 */
+.query-selector {
   margin-bottom: 16px;
-  transition: all 0.3s;
-}
-
-.data-record-card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-}
-
-.record-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-}
-
-.record-id {
-  background: #1890ff;
-  color: white;
-  padding: 2px 6px;
-  border-radius: 3px;
-  font-weight: bold;
-  font-size: 12px;
-}
-
-.record-type {
-  background: #52c41a;
-  color: white;
-  padding: 2px 8px;
-  border-radius: 3px;
-  font-size: 12px;
-}
-
-.record-content {
-  margin: 8px 0;
-  padding: 8px;
-  background: #f5f5f5;
-  border-left: 3px solid #1890ff;
-  border-radius: 4px;
   text-align: left;
-  word-break: break-word;
 }
 
-.record-meta {
+.query-selector .ant-btn {
+  margin-right: 8px;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+/* 主要输入区域 */
+.main-input-card {
+  margin-bottom: 16px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.input-area {
+  width: 100%;
+}
+
+.input-area .ant-input {
+  resize: vertical;
+  min-height: 200px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* 操作按钮区域 */
+.action-buttons {
+  margin-bottom: 16px;
+  text-align: left;
+}
+
+.action-buttons .ant-btn {
+  margin-right: 12px;
+  border-radius: 6px;
+  font-weight: 500;
+}
+
+.action-buttons .ant-btn-primary {
+  background: #1890ff;
+  border-color: #1890ff;
+  box-shadow: 0 2px 4px rgba(24, 144, 255, 0.2);
+}
+
+.action-buttons .ant-btn-primary:hover {
+  background: #40a9ff;
+  border-color: #40a9ff;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(24, 144, 255, 0.3);
+}
+
+/* 返回按钮 */
+.back-button {
+  position: absolute;
+  right: 24px;
+  top: 120px;
+  z-index: 100;
+}
+
+.back-button .ant-btn {
+  background: white;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  font-size: 12px;
-  color: #666;
-  margin-top: 8px;
+  padding: 4px 12px;
+  font-size: 14px;
 }
 
-.creator-address {
-  font-family: monospace;
-  background: #f0f0f0;
-  padding: 2px 4px;
-  border-radius: 3px;
+.back-button .ant-btn:hover {
+  border-color: #1890ff;
+  color: #1890ff;
 }
 
-.timestamp {
-  color: #999;
+/* 数据记录卡片 */
+.records-card {
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  margin-top: 20px;
 }
 
-.status-active {
-  color: #52c41a;
-  font-weight: bold;
+.records-card .ant-card-head {
+  background: linear-gradient(90deg, #f0f2f5 0%, #ffffff 100%);
+  border-bottom: 1px solid #e8e8e8;
+  font-weight: 600;
 }
 
-.status-inactive {
-  color: #ff4d4f;
-  font-weight: bold;
+.records-card .ant-card-head-title {
+  font-size: 16px;
+  color: #262626;
 }
 
-.stats-card {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border: none;
+/* 搜索框样式 */
+.search-box {
   margin-bottom: 16px;
 }
 
-.stats-card .ant-statistic-title {
-  color: rgba(255, 255, 255, 0.8);
-}
-
-.stats-card .ant-statistic-content {
-  color: white;
-}
-
-.search-form {
-  background: white;
-  padding: 20px;
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
-}
-
-.help-text {
-  background: #f6ffed;
-  border: 1px solid #b7eb8f;
+.search-box .ant-input-affix-wrapper {
   border-radius: 6px;
-  padding: 12px;
-  margin-top: 16px;
-  font-size: 12px;
-  color: #389e0d;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
-.help-text strong {
-  color: #237804;
+.search-box .ant-input-affix-wrapper:focus,
+.search-box .ant-input-affix-wrapper-focused {
+  border-color: #1890ff;
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
 }
 
-/* 响应式设计 */
-@media (max-width: 1200px) {
-  .ant-layout-sider {
-    width: 250px !important;
-    min-width: 250px !important;
-    max-width: 250px !important;
-  }
-  
-  .ant-layout-content {
-    margin-left: 250px;
-  }
+/* 表格样式 */
+.ant-table {
+  border-radius: 8px;
+  overflow: hidden;
 }
 
-@media (max-width: 992px) {
-  .ant-layout-sider {
-    display: none;
-  }
-  
-  .ant-layout-content {
-    margin-left: 0;
-  }
-}
-
-@media (max-width: 768px) {
-  .ant-layout-header {
-    padding: 0 16px;
-  }
-  
-  .ant-layout-content {
-    padding: 16px;
-  }
-}
-
-/* 表格样式优化 */
 .ant-table-thead > tr > th {
   background: #fafafa;
   font-weight: 600;
+  color: #262626;
+  border-bottom: 2px solid #e8e8e8;
+}
+
+.ant-table-tbody > tr > td {
+  padding: 12px 16px;
+  border-bottom: 1px solid #f0f0f0;
 }
 
 .ant-table-tbody > tr:hover > td {
   background: #e6f7ff;
 }
 
-/* 按钮样式优化 */
-.ant-btn-primary {
+.ant-table-tbody > tr:last-child > td {
+  border-bottom: none;
+}
+
+/* 标签样式 */
+.ant-tag {
+  border-radius: 12px;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* 分页样式 */
+.ant-pagination {
+  margin-top: 16px;
+  text-align: center;
+}
+
+.ant-pagination-item {
   border-radius: 6px;
-  box-shadow: 0 2px 4px rgba(24, 144, 255, 0.2);
 }
 
-.ant-btn-primary:hover {
-  box-shadow: 0 4px 8px rgba(24, 144, 255, 0.3);
-  transform: translateY(-1px);
+.ant-pagination-item-active {
+  background: #1890ff;
+  border-color: #1890ff;
 }
 
-/* 卡片样式优化 */
-.ant-card {
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
-  border: none;
-}
-
-.ant-card-head {
-  border-radius: 8px 8px 0 0;
-  background: linear-gradient(90deg, #f0f2f5 0%, #ffffff 100%);
+.ant-pagination-item-active a {
+  color: white;
 }
 
 /* 模态框样式 */
+.ant-modal {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
 .ant-modal-header {
-  border-radius: 8px 8px 0 0;
   background: linear-gradient(90deg, #1890ff 0%, #096dd9 100%);
+  border-bottom: none;
+  padding: 16px 24px;
 }
 
 .ant-modal-title {
   color: white;
+  font-size: 16px;
+  font-weight: 600;
 }
 
 .ant-modal-close {
   color: white;
+  top: 16px;
+  right: 16px;
 }
 
 .ant-modal-close:hover {
   color: rgba(255, 255, 255, 0.8);
+}
+
+.ant-modal-body {
+  padding: 24px;
+}
+
+.ant-modal-footer {
+  border-top: 1px solid #e8e8e8;
+  padding: 16px 24px;
+}
+
+/* 表单样式 */
+.ant-form-item-label > label {
+  font-weight: 500;
+  color: #262626;
+}
+
+.ant-input,
+.ant-input:focus,
+.ant-input-focused {
+  border-radius: 6px;
+}
+
+.ant-input:focus,
+.ant-input-focused {
+  border-color: #1890ff;
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+}
+
+.ant-btn {
+  border-radius: 6px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.ant-btn-primary {
+  background: #1890ff;
+  border-color: #1890ff;
+  box-shadow: 0 2px 4px rgba(24, 144, 255, 0.2);
+}
+
+.ant-btn-primary:hover {
+  background: #40a9ff;
+  border-color: #40a9ff;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(24, 144, 255, 0.3);
+}
+
+/* 响应式设计 */
+@media (max-width: 1200px) {
+  .main-content {
+    padding: 16px;
+  }
+  
+  .header {
+    padding: 0 16px;
+  }
+  
+  .back-button {
+    right: 16px;
+  }
+}
+
+@media (max-width: 768px) {
+  .header-title {
+    font-size: 16px;
+  }
+  
+  .query-selector .ant-btn {
+    font-size: 12px;
+    padding: 4px 8px;
+    margin-right: 4px;
+  }
+  
+  .action-buttons .ant-btn {
+    font-size: 14px;
+    margin-bottom: 8px;
+  }
+  
+  .input-area .ant-input {
+    min-height: 150px;
+  }
+  
+  .test-badge {
+    font-size: 10px;
+    padding: 2px 4px;
+  }
+  
+  .back-button {
+    position: static;
+    text-align: right;
+    margin-bottom: 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .main-content {
+    padding: 12px;
+  }
+  
+  .header {
+    padding: 0 12px;
+  }
+  
+  .header-left {
+    flex: 1;
+  }
+  
+  .header-title {
+    font-size: 14px;
+  }
+  
+  .query-selector {
+    text-align: center;
+  }
+  
+  .query-selector .ant-btn {
+    display: block;
+    width: 100%;
+    margin-bottom: 8px;
+    margin-right: 0;
+  }
+  
+  .action-buttons {
+    text-align: center;
+  }
+  
+  .action-buttons .ant-btn {
+    display: block;
+    width: 100%;
+    margin-bottom: 8px;
+    margin-right: 0;
+  }
+}
+
+/* 滚动条样式 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* 动画效果 */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.main-input-card,
+.records-card {
+  animation: fadeIn 0.3s ease-out;
+}
+
+/* 加载状态 */
+.ant-spin-container {
+  transition: all 0.3s ease;
+}
+
+.ant-spin-blur {
+  opacity: 0.5;
+  filter: blur(0.5px);
+}
+
+/* 空状态样式 */
+.ant-empty {
+  padding: 40px 0;
+}
+
+.ant-empty-description {
+  color: #999;
+  font-size: 14px;
 }
