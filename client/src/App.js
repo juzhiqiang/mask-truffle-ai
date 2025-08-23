@@ -459,14 +459,6 @@ function App() {
           
           <div className="header-right">
             <Space>
-              {/* 只有连接钱包后才显示测试标识 */}
-              {account && (
-                <div className="test-badge">
-                  <div>测试</div>
-                  <div>未编</div>
-                </div>
-              )}
-              
               {/* 钱包连接组件 */}
               <WalletConnection onAccountChange={setAccount} />
             </Space>
