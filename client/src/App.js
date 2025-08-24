@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Layout, Menu, Card, Form, Input, InputNumber, Button, Row, Col, message, Tabs, Table, Modal, Badge, Typography, Space, Divider } from 'antd';
 import { SendOutlined, HistoryOutlined, WalletOutlined, DatabaseOutlined, EyeOutlined } from '@ant-design/icons';
+import { Web3ReactProvider } from '@web3-react/core';
+import { ethers } from 'ethers';
 
 // 导入组件和服务
 import WalletConnection from './components/WalletConnection';
@@ -14,7 +16,14 @@ const { Header, Content, Footer } = Layout;
 const { TabPane } = Tabs;
 const { Title, Text, Paragraph } = Typography;
 
-function App() {
+// Web3React 库函数
+function getLibrary(provider) {
+  const library = new ethers.providers.Web3Provider(provider);
+  library.pollingInterval = 12000;
+  return library;
+}
+
+function AppContent() {
   // 状态管理
   const [account, setAccount] = useState(null);
   const [ethBalance, setEthBalance] = useState('0');
@@ -54,56 +63,56 @@ function App() {
     }
   };
 
-  // 钱包连接回调
-  const handleWalletConnect = async (walletAccount) => {
+  // 钱包账户变化回调 - 修复函数名
+  const handleAccountChange = async (walletAccount) => {
     try {
-      setAccount(walletAccount);
-      console.log('Wallet connected:', walletAccount);
-      
-      // 获取ETH余额
-      try {
-        const ethBal = await ethTransferService.getBalance(walletAccount);
-        setEthBalance(ethBal);
-      } catch (error) {
-        console.error('Failed to get ETH balance:', error);
+      if (walletAccount) {
+        setAccount(walletAccount);
+        console.log('Wallet connected:', walletAccount);
+        
+        // 获取ETH余额
+        try {
+          const ethBal = await ethTransferService.getBalance(walletAccount);
+          setEthBalance(ethBal);
+        } catch (error) {
+          console.error('Failed to get ETH balance:', error);
+          setEthBalance('0');
+        }
+
+        // 获取USDT余额
+        try {
+          const usdtBal = await usdtService.getBalance(walletAccount);
+          setUsdtBalance(usdtBal);
+        } catch (error) {
+          console.error('Failed to get USDT balance:', error);
+          setUsdtBalance('0');
+        }
+
+        // 获取网络信息
+        try {
+          const networkInfo = await ethTransferService.getCurrentNetwork();
+          setNetwork(networkInfo);
+        } catch (error) {
+          console.error('Failed to get network info:', error);
+        }
+
+        // 加载交易记录
+        loadTransactionRecords();
+        loadCustomDataRecords();
+
+      } else {
+        // 钱包断开连接
+        setAccount(null);
         setEthBalance('0');
-      }
-
-      // 获取USDT余额
-      try {
-        const usdtBal = await usdtService.getBalance(walletAccount);
-        setUsdtBalance(usdtBal);
-      } catch (error) {
-        console.error('Failed to get USDT balance:', error);
         setUsdtBalance('0');
+        setNetwork(null);
+        setTransactionRecords([]);
+        setCustomDataRecords([]);
       }
-
-      // 获取网络信息
-      try {
-        const networkInfo = await ethTransferService.getCurrentNetwork();
-        setNetwork(networkInfo);
-      } catch (error) {
-        console.error('Failed to get network info:', error);
-      }
-
-      // 加载交易记录
-      loadTransactionRecords();
-      loadCustomDataRecords();
-
     } catch (error) {
-      console.error('Wallet connection error:', error);
-      message.error('钱包连接失败: ' + error.message);
+      console.error('Account change error:', error);
+      message.error('钱包状态更新失败: ' + error.message);
     }
-  };
-
-  // 钱包断开连接回调
-  const handleWalletDisconnect = () => {
-    setAccount(null);
-    setEthBalance('0');
-    setUsdtBalance('0');
-    setNetwork(null);
-    setTransactionRecords([]);
-    setCustomDataRecords([]);
   };
 
   // 保存交易记录
@@ -619,14 +628,7 @@ function App() {
           <Title level={3} style={{ color: 'white', margin: 0 }}>
             <WalletOutlined /> Mask Truffle AI
           </Title>
-          <WalletConnection
-            onConnect={handleWalletConnect}
-            onDisconnect={handleWalletDisconnect}
-            account={account}
-            ethBalance={ethBalance}
-            usdtBalance={usdtBalance}
-            network={network}
-          />
+          <WalletConnection onAccountChange={handleAccountChange} />
         </div>
       </Header>
 
@@ -801,6 +803,15 @@ function App() {
         </Text>
       </Footer>
     </Layout>
+  );
+}
+
+// 主应用组件，包装 Web3ReactProvider
+function App() {
+  return (
+    <Web3ReactProvider getLibrary={getLibrary}>
+      <AppContent />
+    </Web3ReactProvider>
   );
 }
 
