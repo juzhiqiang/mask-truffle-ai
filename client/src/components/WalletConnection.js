@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useWeb3React } from '@web3-react/core';
 import { InjectedConnector } from '@web3-react/injected-connector';
-import { Button, Modal, Card, Space, message, Alert, Avatar, Dropdown, Menu } from 'antd';
+import { Button, Modal, Card, Space, message, Alert, Avatar, Dropdown } from 'antd';
 import { WalletOutlined, DisconnectOutlined, SwapOutlined, CopyOutlined, CheckOutlined } from '@ant-design/icons';
 import { ethers } from 'ethers';
 
