@@ -63,7 +63,7 @@ function AppContent() {
     }
   };
 
-  // 钱包账户变化回调 - 修复函数名
+  // 钱包账户变化回调
   const handleAccountChange = async (walletAccount) => {
     try {
       if (walletAccount) {
@@ -678,49 +678,69 @@ function AppContent() {
           </Row>
         )}
 
-        <Tabs defaultActiveKey="eth-transfer">
-          <TabPane tab={<span><SendOutlined />ETH 转账</span>} key="eth-transfer">
-            <Card title="ETH 转账" style={{ marginBottom: 24 }}>
+        {/* 功能标签页 - 只包含操作功能 */}
+        <Card style={{ marginBottom: 24 }}>
+          <Tabs defaultActiveKey="eth-transfer">
+            <TabPane tab={<span><SendOutlined />ETH 转账</span>} key="eth-transfer">
               <ETHTransferForm />
-            </Card>
-          </TabPane>
+            </TabPane>
 
-          <TabPane tab={<span><SendOutlined />USDT 转账</span>} key="usdt-transfer">
-            <Card title="USDT 转账" style={{ marginBottom: 24 }}>
+            <TabPane tab={<span><SendOutlined />USDT 转账</span>} key="usdt-transfer">
               <USDTTransferForm />
-            </Card>
-          </TabPane>
+            </TabPane>
 
-          <TabPane tab={<span><DatabaseOutlined />自定义数据</span>} key="custom-data">
-            <Card title="提交自定义数据到区块链" style={{ marginBottom: 24 }}>
+            <TabPane tab={<span><DatabaseOutlined />自定义数据</span>} key="custom-data">
               <CustomDataForm />
-            </Card>
-          </TabPane>
+            </TabPane>
+          </Tabs>
+        </Card>
 
-          <TabPane tab={<span><HistoryOutlined />转账记录</span>} key="transaction-history">
-            <Card title="转账历史记录">
+        {/* 记录展示区域 - 独立于标签页 */}
+        <Row gutter={24}>
+          <Col span={12}>
+            <Card 
+              title={<span><HistoryOutlined /> 转账记录</span>}
+              extra={
+                <Badge 
+                  count={transactionRecords.length} 
+                  showZero 
+                  style={{ backgroundColor: '#52c41a' }} 
+                />
+              }
+            >
               <Table
                 columns={transactionColumns}
                 dataSource={transactionRecords}
                 rowKey="id"
-                pagination={{ pageSize: 10 }}
-                scroll={{ x: 800 }}
+                pagination={{ pageSize: 5, size: 'small' }}
+                scroll={{ x: 600 }}
+                size="small"
               />
             </Card>
-          </TabPane>
-
-          <TabPane tab={<span><DatabaseOutlined />数据记录</span>} key="data-history">
-            <Card title="自定义数据历史记录">
+          </Col>
+          
+          <Col span={12}>
+            <Card 
+              title={<span><DatabaseOutlined /> 数据记录</span>}
+              extra={
+                <Badge 
+                  count={customDataRecords.length} 
+                  showZero 
+                  style={{ backgroundColor: '#1890ff' }} 
+                />
+              }
+            >
               <Table
                 columns={customDataColumns}
                 dataSource={customDataRecords}
                 rowKey="id"
-                pagination={{ pageSize: 10 }}
-                scroll={{ x: 800 }}
+                pagination={{ pageSize: 5, size: 'small' }}
+                scroll={{ x: 600 }}
+                size="small"
               />
             </Card>
-          </TabPane>
-        </Tabs>
+          </Col>
+        </Row>
 
         {/* 详情查看Modal */}
         <Modal
