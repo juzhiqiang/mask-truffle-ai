@@ -92,9 +92,13 @@ const WalletConnection = ({ onAccountChange }) => {
       // 清除之前的错误状态
       if (error) {
         deactivate();
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 200));
       }
 
+      // 先尝试请求账户权限
+      await window.ethereum.request({ method: 'eth_requestAccounts' });
+      
+      // 然后激活连接器
       await activate(injectedConnector);
       
       // 等待连接状态更新
@@ -102,15 +106,9 @@ const WalletConnection = ({ onAccountChange }) => {
         if (active && account) {
           message.success('钱包连接成功');
           setIsModalVisible(false);
-        } else if (!connecting) {
-          // 如果不在连接状态且没有激活，说明连接失败了
-          if (!connectionError) {
-            setConnectionError('连接失败，请重试');
-            message.error('连接失败，请重试');
-          }
         }
         setConnecting(false);
-      }, 1500);
+      }, 1000);
 
     } catch (error) {
       console.error('连接钱包失败:', error);
@@ -222,64 +220,110 @@ const WalletConnection = ({ onAccountChange }) => {
   if (active && account) {
     const currentNetwork = NETWORKS[chainId] || { shortName: `Chain ${chainId}`, color: '#999', symbol: 'ETH' };
     
-    const networkMenu = (
-      <Menu onClick={({ key }) => switchNetwork(parseInt(key))}>
-        <Menu.ItemGroup title="主网络">
-          <Menu.Item key="1" disabled={chainId === 1}>
-            <Space>
-              <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: NETWORKS[1].color }} />
-              {NETWORKS[1].name}
-            </Space>
-          </Menu.Item>
-        </Menu.ItemGroup>
-        <Menu.ItemGroup title="测试网络">
-          <Menu.Item key="5" disabled={chainId === 5}>
-            <Space>
-              <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: NETWORKS[5].color }} />
-              {NETWORKS[5].name}
-            </Space>
-          </Menu.Item>
-          <Menu.Item key="11155111" disabled={chainId === 11155111}>
-            <Space>
-              <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: NETWORKS[11155111].color }} />
-              {NETWORKS[11155111].name}
-            </Space>
-          </Menu.Item>
-        </Menu.ItemGroup>
-        <Menu.ItemGroup title="开发网络">
-          <Menu.Item key="1337" disabled={chainId === 1337}>
-            <Space>
-              <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: NETWORKS[1337].color }} />
-              {NETWORKS[1337].name}
-            </Space>
-          </Menu.Item>
-        </Menu.ItemGroup>
-      </Menu>
-    );
+    const networkMenuItems = [
+      {
+        key: 'main',
+        label: '主网络',
+        type: 'group',
+        children: [
+          {
+            key: '1',
+            label: (
+              <Space>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: NETWORKS[1].color }} />
+                {NETWORKS[1].name}
+              </Space>
+            ),
+            disabled: chainId === 1,
+            onClick: () => switchNetwork(1)
+          }
+        ]
+      },
+      {
+        key: 'test',
+        label: '测试网络',
+        type: 'group',
+        children: [
+          {
+            key: '5',
+            label: (
+              <Space>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: NETWORKS[5].color }} />
+                {NETWORKS[5].name}
+              </Space>
+            ),
+            disabled: chainId === 5,
+            onClick: () => switchNetwork(5)
+          },
+          {
+            key: '11155111',
+            label: (
+              <Space>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: NETWORKS[11155111].color }} />
+                {NETWORKS[11155111].name}
+              </Space>
+            ),
+            disabled: chainId === 11155111,
+            onClick: () => switchNetwork(11155111)
+          }
+        ]
+      },
+      {
+        key: 'dev',
+        label: '开发网络',
+        type: 'group',
+        children: [
+          {
+            key: '1337',
+            label: (
+              <Space>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: NETWORKS[1337].color }} />
+                {NETWORKS[1337].name}
+              </Space>
+            ),
+            disabled: chainId === 1337,
+            onClick: () => switchNetwork(1337)
+          }
+        ]
+      }
+    ];
 
-    const walletMenu = (
-      <Menu>
-        <Menu.Item key="copy" onClick={copyAddress} icon={copied ? <CheckOutlined /> : <CopyOutlined />}>
-          {copied ? '已复制地址' : '复制地址'}
-        </Menu.Item>
-        <Menu.Item key="explorer" onClick={() => {
+    const walletMenuItems = [
+      {
+        key: 'copy',
+        label: copied ? '已复制地址' : '复制地址',
+        icon: copied ? <CheckOutlined /> : <CopyOutlined />,
+        onClick: copyAddress
+      },
+      {
+        key: 'explorer',
+        label: '在区块浏览器中查看',
+        disabled: !currentNetwork.blockExplorer,
+        onClick: () => {
           if (currentNetwork.blockExplorer) {
             window.open(`${currentNetwork.blockExplorer}/address/${account}`, '_blank');
           }
-        }} disabled={!currentNetwork.blockExplorer}>
-          在区块浏览器中查看
-        </Menu.Item>
-        <Menu.Divider />
-        <Menu.Item key="disconnect" onClick={disconnect} icon={<DisconnectOutlined />} danger>
-          断开连接
-        </Menu.Item>
-      </Menu>
-    );
+        }
+      },
+      {
+        type: 'divider'
+      },
+      {
+        key: 'disconnect',
+        label: '断开连接',
+        icon: <DisconnectOutlined />,
+        danger: true,
+        onClick: disconnect
+      }
+    ];
 
     return (
       <div className="wallet-connected">
         <Space size="middle">
-          <Dropdown overlay={networkMenu} trigger={['click']}>
+          <Dropdown
+            menu={{ items: networkMenuItems }}
+            trigger={['click']}
+          >
             <Button 
               type="default" 
               size="small" 
@@ -297,7 +341,10 @@ const WalletConnection = ({ onAccountChange }) => {
             </div>
           </div>
           
-          <Dropdown overlay={walletMenu} trigger={['click']}>
+          <Dropdown
+            menu={{ items: walletMenuItems }}
+            trigger={['click']}
+          >
             <div className="wallet-user" style={{ cursor: 'pointer' }}>
               <Space>
                 {generateAvatar(account)}
@@ -330,7 +377,7 @@ const WalletConnection = ({ onAccountChange }) => {
       
       <Modal
         title="连接钱包"
-        visible={isModalVisible}
+        open={isModalVisible}
         onCancel={() => {
           setIsModalVisible(false);
           setConnectionError('');
