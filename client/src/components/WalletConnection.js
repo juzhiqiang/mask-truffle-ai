@@ -291,19 +291,20 @@ const WalletConnection = ({ onAccountChange }) => {
           </Dropdown>
           
           <div className="wallet-balance">
-            <div style={{ fontSize: '12px', color: '#8c8c8c' }}>余额</div>
-            <div style={{ fontSize: '14px', fontWeight: '600', color: '#262626' }}>
+            <div style={{ fontSize: '12px', color: '#f3f3f3',lineHeight: '16px' }}>余额</div>
+
+            <div style={{ fontSize: '14px', fontWeight: '600', color: '#fff',lineHeight: '16px' }}>
               {balance} {currentNetwork.symbol}
             </div>
           </div>
           
           <Dropdown overlay={walletMenu} trigger={['click']}>
-            <div className="wallet-user" style={{ cursor: 'pointer' }}>
+            <div className="wallet-user" style={{ cursor: 'pointer',lineHeight: '16px',height:48 }}>
               <Space>
                 {generateAvatar(account)}
                 <div>
-                  <div style={{ fontSize: '12px', color: '#8c8c8c' }}>钱包地址</div>
-                  <div style={{ fontSize: '14px', fontWeight: '600', color: '#262626', fontFamily: 'monospace' }}>
+                  <div style={{ fontSize: '12px', color: '#f3f3f3',lineHeight: '16px' }}>钱包地址</div>
+                  <div style={{ fontSize: '14px', fontWeight: '600', color: '#fff', fontFamily: 'monospace',lineHeight: '16px' }}>
                     {formatAddress(account)}
                   </div>
                 </div>
