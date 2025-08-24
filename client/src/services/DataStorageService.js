@@ -314,28 +314,58 @@ class DataStorageService {
     return this.signer;
   }
 
-  async storeData(dataType, content) {
+  async storeData(dataType, content, progressCallback = null) {
     try {
+      // 进度回调：准备阶段
+      if (progressCallback) {
+        progressCallback(15, '正在获取钱包签名器...');
+      }
+
       await this.getSigner();
       if (!this.contract) throw new Error('合约未初始化');
       
       console.log('Storing data:', { dataType, content });
       
+      // 进度回调：估算Gas
+      if (progressCallback) {
+        progressCallback(30, '正在预估Gas费用...');
+      }
+
       // 预估gas费用
       const gasEstimate = await this.contract.estimateGas.storeData(dataType, content);
       console.log('Gas estimate:', gasEstimate.toString());
+
+      // 进度回调：发送交易
+      if (progressCallback) {
+        progressCallback(50, '正在发送交易...');
+      }
       
       const tx = await this.contract.storeData(dataType, content, {
         gasLimit: gasEstimate.mul(120).div(100) // 增加20%的gas缓冲
       });
       
       console.log('Transaction submitted:', tx.hash);
+
+      // 进度回调：等待确认
+      if (progressCallback) {
+        progressCallback(75, '正在等待区块确认...');
+      }
+
       const receipt = await tx.wait();
       console.log('Transaction confirmed:', receipt);
+
+      // 进度回调：完成
+      if (progressCallback) {
+        progressCallback(100, '交易确认完成！');
+      }
       
       return { tx, receipt };
     } catch (error) {
       console.error('Store data failed:', error);
+      // 进度回调：错误
+      if (progressCallback) {
+        progressCallback(-1, `操作失败: ${error.message}`);
+      }
       this.handleContractError(error);
     }
   }
@@ -418,40 +448,119 @@ class DataStorageService {
     }
   }
 
-  async updateData(recordId, newContent) {
+  async updateData(recordId, newContent, progressCallback = null) {
     try {
+      if (progressCallback) {
+        progressCallback(20, '正在获取钱包签名器...');
+      }
+
       await this.getSigner();
       if (!this.contract) throw new Error('合约未初始化');
+
+      if (progressCallback) {
+        progressCallback(40, '正在预估Gas费用...');
+      }
       
       const gasEstimate = await this.contract.estimateGas.updateData(recordId, newContent);
+
+      if (progressCallback) {
+        progressCallback(60, '正在发送更新交易...');
+      }
+
       const tx = await this.contract.updateData(recordId, newContent, {
         gasLimit: gasEstimate.mul(120).div(100)
       });
+
+      if (progressCallback) {
+        progressCallback(80, '等待交易确认...');
+      }
       
       const receipt = await tx.wait();
+
+      if (progressCallback) {
+        progressCallback(100, '更新成功！');
+      }
+
       return { tx, receipt };
     } catch (error) {
       console.error('Update data failed:', error);
+      if (progressCallback) {
+        progressCallback(-1, `更新失败: ${error.message}`);
+      }
       this.handleContractError(error);
     }
   }
 
-  async deactivateData(recordId) {
+  async deactivateData(recordId, progressCallback = null) {
     try {
+      if (progressCallback) {
+        progressCallback(20, '正在获取钱包签名器...');
+      }
+
       await this.getSigner();
       if (!this.contract) throw new Error('合约未初始化');
+
+      if (progressCallback) {
+        progressCallback(40, '正在预估Gas费用...');
+      }
       
       const gasEstimate = await this.contract.estimateGas.deactivateData(recordId);
+
+      if (progressCallback) {
+        progressCallback(60, '正在发送停用交易...');
+      }
+
       const tx = await this.contract.deactivateData(recordId, {
         gasLimit: gasEstimate.mul(120).div(100)
       });
+
+      if (progressCallback) {
+        progressCallback(80, '等待交易确认...');
+      }
       
       const receipt = await tx.wait();
+
+      if (progressCallback) {
+        progressCallback(100, '停用成功！');
+      }
+
       return { tx, receipt };
     } catch (error) {
       console.error('Deactivate data failed:', error);
+      if (progressCallback) {
+        progressCallback(-1, `停用失败: ${error.message}`);
+      }
       this.handleContractError(error);
     }
+  }
+
+  // 批量操作方法（带进度回调）
+  async batchStoreData(dataList, progressCallback = null) {
+    const results = [];
+    const total = dataList.length;
+    
+    for (let i = 0; i < total; i++) {
+      const { dataType, content } = dataList[i];
+      
+      try {
+        if (progressCallback) {
+          const progress = Math.floor(((i + 1) / total) * 100);
+          progressCallback(progress, `正在处理第 ${i + 1}/${total} 条数据...`);
+        }
+
+        const result = await this.storeData(dataType, content);
+        results.push({ success: true, result, index: i });
+        
+        // 添加延迟避免网络拥堵
+        if (i < total - 1) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      } catch (error) {
+        results.push({ success: false, error: error.message, index: i });
+      }
+    }
+    
+    return results;
   }
 
   // 错误处理
@@ -566,6 +675,73 @@ class DataStorageService {
       return ethers.utils.formatEther(balance);
     } catch (error) {
       console.error('Failed to get balance:', error);
+      return null;
+    }
+  }
+
+  // 获取交易状态（用于进度追踪）
+  async getTransactionStatus(txHash) {
+    if (!this.provider || !txHash) return null;
+    
+    try {
+      const tx = await this.provider.getTransaction(txHash);
+      const receipt = await this.provider.getTransactionReceipt(txHash);
+      
+      return {
+        transaction: tx,
+        receipt: receipt,
+        status: receipt ? (receipt.status === 1 ? 'success' : 'failed') : 'pending',
+        confirmations: receipt ? receipt.confirmations : 0
+      };
+    } catch (error) {
+      console.error('Failed to get transaction status:', error);
+      return null;
+    }
+  }
+
+  // 等待交易确认（带进度更新）
+  async waitForTransaction(txHash, confirmations = 1, progressCallback = null) {
+    if (!this.provider || !txHash) return null;
+    
+    try {
+      const tx = await this.provider.getTransaction(txHash);
+      if (!tx) throw new Error('交易未找到');
+
+      if (progressCallback) {
+        progressCallback(50, '等待交易被打包...');
+      }
+
+      const receipt = await tx.wait(confirmations);
+
+      if (progressCallback) {
+        progressCallback(100, `交易确认完成 (${confirmations} 个确认)`);
+      }
+
+      return receipt;
+    } catch (error) {
+      if (progressCallback) {
+        progressCallback(-1, `等待确认失败: ${error.message}`);
+      }
+      throw error;
+    }
+  }
+
+  // 获取Gas价格建议
+  async getGasPriceRecommendation() {
+    if (!this.provider) return null;
+    
+    try {
+      const gasPrice = await this.provider.getGasPrice();
+      const gasPriceInGwei = ethers.utils.formatUnits(gasPrice, 'gwei');
+      
+      return {
+        current: parseFloat(gasPriceInGwei),
+        fast: parseFloat(gasPriceInGwei) * 1.2,
+        standard: parseFloat(gasPriceInGwei),
+        safe: parseFloat(gasPriceInGwei) * 0.8
+      };
+    } catch (error) {
+      console.error('Failed to get gas price recommendation:', error);
       return null;
     }
   }
