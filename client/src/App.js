@@ -4,6 +4,7 @@ import { Web3Provider } from '@ethersproject/providers';
 import { Layout, Card, Input, Button, Select, Table, Space, Modal, Form, message, Tag, Statistic, Row, Col, Tabs } from 'antd';
 import { SearchOutlined, PlusOutlined, WalletOutlined, DatabaseOutlined, LeftOutlined, SendOutlined, FileTextOutlined, TransactionOutlined } from '@ant-design/icons';
 import WalletConnection from './components/WalletConnection';
+import ProgressBar from './components/ProgressBar';
 import DataStorageService from './services/DataStorageService';
 import './App.css';
 
@@ -28,6 +29,12 @@ function App() {
   const [stats, setStats] = useState({ total: 0, active: 0, totalTypes: 0 });
   const [account, setAccount] = useState('');
   const [dataService, setDataService] = useState(null);
+
+  // 进度条相关状态
+  const [progressVisible, setProgressVisible] = useState(false);
+  const [progressValue, setProgressValue] = useState(0);
+  const [progressStatus, setProgressStatus] = useState('active'); // 'active', 'success', 'exception'
+  const [progressMessage, setProgressMessage] = useState('');
 
   // 表单数据状态
   const [transferForm] = Form.useForm();
@@ -83,16 +90,45 @@ function App() {
     }
   };
 
+  // 进度更新回调函数
+  const handleProgressUpdate = (progress, message, status = 'active') => {
+    if (progress === -1) {
+      // 错误状态
+      setProgressStatus('exception');
+      setProgressMessage(message);
+    } else {
+      setProgressValue(progress);
+      setProgressMessage(message);
+      
+      if (progress >= 100) {
+        setProgressStatus('success');
+        // 成功后2秒自动关闭
+        setTimeout(() => {
+          setProgressVisible(false);
+        }, 2000);
+      } else {
+        setProgressStatus('active');
+      }
+    }
+  };
+
   const handleSubmit = async (values, type) => {
     if (!dataService) {
       message.warning('请先连接钱包');
       return;
     }
 
+    // 显示进度条并重置状态
+    setProgressVisible(true);
+    setProgressValue(0);
+    setProgressStatus('active');
+    setProgressMessage('正在准备数据...');
+
     try {
       let dataType = type;
       let content = '';
       
+      // 准备数据内容
       switch (type) {
         case 'transfer':
           content = JSON.stringify({
@@ -126,7 +162,9 @@ function App() {
           content = JSON.stringify(values);
       }
 
-      await dataService.storeData(dataType, content);
+      // 调用DataService的storeData方法，传入进度回调
+      await dataService.storeData(dataType, content, handleProgressUpdate);
+      
       message.success(`${getTabName(type)}数据上链成功`);
       
       // 重置对应的表单
@@ -134,10 +172,14 @@ function App() {
       if (type === 'log') logForm.resetFields();
       if (type === 'usdt') usdtForm.resetFields();
       
+      // 刷新数据
       await loadInitialData(dataService);
       await loadStats(dataService);
+
     } catch (error) {
       console.error('上链失败:', error);
+      setProgressStatus('exception');
+      setProgressMessage(`上链失败: ${error.message}`);
       message.error('数据上链失败: ' + error.message);
     }
   };
@@ -149,6 +191,14 @@ function App() {
       case 'usdt': return 'USDT发送';
       default: return '';
     }
+  };
+
+  // 关闭进度条
+  const handleProgressClose = () => {
+    setProgressVisible(false);
+    setProgressValue(0);
+    setProgressStatus('active');
+    setProgressMessage('');
   };
 
   const renderTransferForm = () => (
@@ -215,10 +265,21 @@ function App() {
       
       <Form.Item>
         <Space>
-          <Button type="primary" htmlType="submit" icon={<TransactionOutlined />} size="large">
+          <Button 
+            type="primary" 
+            htmlType="submit" 
+            icon={<TransactionOutlined />} 
+            size="large"
+            loading={progressVisible && progressStatus === 'active'}
+            disabled={progressVisible && progressStatus === 'active'}
+          >
             提交转账数据
           </Button>
-          <Button onClick={() => transferForm.resetFields()} size="large">
+          <Button 
+            onClick={() => transferForm.resetFields()} 
+            size="large"
+            disabled={progressVisible && progressStatus === 'active'}
+          >
             重置
           </Button>
         </Space>
@@ -271,10 +332,21 @@ function App() {
       
       <Form.Item>
         <Space>
-          <Button type="primary" htmlType="submit" icon={<FileTextOutlined />} size="large">
+          <Button 
+            type="primary" 
+            htmlType="submit" 
+            icon={<FileTextOutlined />} 
+            size="large"
+            loading={progressVisible && progressStatus === 'active'}
+            disabled={progressVisible && progressStatus === 'active'}
+          >
             提交日志数据
           </Button>
-          <Button onClick={() => logForm.resetFields()} size="large">
+          <Button 
+            onClick={() => logForm.resetFields()} 
+            size="large"
+            disabled={progressVisible && progressStatus === 'active'}
+          >
             重置
           </Button>
         </Space>
@@ -346,10 +418,21 @@ function App() {
       
       <Form.Item>
         <Space>
-          <Button type="primary" htmlType="submit" icon={<SendOutlined />} size="large">
+          <Button 
+            type="primary" 
+            htmlType="submit" 
+            icon={<SendOutlined />} 
+            size="large"
+            loading={progressVisible && progressStatus === 'active'}
+            disabled={progressVisible && progressStatus === 'active'}
+          >
             提交USDT数据
           </Button>
-          <Button onClick={() => usdtForm.resetFields()} size="large">
+          <Button 
+            onClick={() => usdtForm.resetFields()} 
+            size="large"
+            disabled={progressVisible && progressStatus === 'active'}
+          >
             重置
           </Button>
         </Space>
@@ -587,6 +670,15 @@ function App() {
             />
           </Card>
         </Content>
+
+        {/* 进度条组件 */}
+        <ProgressBar
+          visible={progressVisible}
+          progress={progressValue}
+          status={progressStatus}
+          message={progressMessage}
+          onCancel={handleProgressClose}
+        />
       </Layout>
     </Web3ReactProvider>
   );
