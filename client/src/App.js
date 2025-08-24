@@ -79,9 +79,9 @@ function AppContent() {
           setEthBalance('0');
         }
 
-        // 获取USDT余额
+        // 获取USDT余额 - 修复方法名
         try {
-          const usdtBal = await usdtService.getBalance(walletAccount);
+          const usdtBal = await usdtService.getUSDTBalance(walletAccount);
           setUsdtBalance(usdtBal);
         } catch (error) {
           console.error('Failed to get USDT balance:', error);
@@ -123,8 +123,9 @@ function AppContent() {
       timestamp: new Date().toISOString(),
       date: new Date().toLocaleString()
     };
-    setTransactionRecords(prev => [newRecord, ...prev]);
-    localStorage.setItem('transactionRecords', JSON.stringify([newRecord, ...transactionRecords]));
+    const updatedRecords = [newRecord, ...transactionRecords];
+    setTransactionRecords(updatedRecords);
+    localStorage.setItem('transactionRecords', JSON.stringify(updatedRecords));
   };
 
   // 加载交易记录
@@ -147,8 +148,9 @@ function AppContent() {
       timestamp: new Date().toISOString(),
       date: new Date().toLocaleString()
     };
-    setCustomDataRecords(prev => [newRecord, ...prev]);
-    localStorage.setItem('customDataRecords', JSON.stringify([newRecord, ...customDataRecords]));
+    const updatedRecords = [newRecord, ...customDataRecords];
+    setCustomDataRecords(updatedRecords);
+    localStorage.setItem('customDataRecords', JSON.stringify(updatedRecords));
   };
 
   // 加载自定义数据记录
@@ -261,6 +263,7 @@ function AppContent() {
       const result = await usdtService.transferUSDT(
         values.toAddress,
         values.amount,
+        'ethereum', // 默认使用ethereum网络
         updateProgress
       );
 
@@ -271,17 +274,17 @@ function AppContent() {
         amount: result.amount,
         token: 'USDT',
         toAddress: result.toAddress,
-        fromAddress: result.fromAddress,
-        status: result.status,
-        gasUsed: result.gasUsed
+        fromAddress: account, // USDTService 没有返回fromAddress，使用当前账户
+        status: result.receipt.status === 1 ? 'success' : 'failed',
+        gasUsed: result.receipt.gasUsed.toString()
       });
 
       message.success('USDT转账成功！');
       usdtTransferForm.resetFields();
 
-      // 更新余额
+      // 更新余额 - 修复方法名
       try {
-        const newBalance = await usdtService.getBalance(account);
+        const newBalance = await usdtService.getUSDTBalance(account);
         setUsdtBalance(newBalance);
       } catch (error) {
         console.error('Failed to update USDT balance:', error);
