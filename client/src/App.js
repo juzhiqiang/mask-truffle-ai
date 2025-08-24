@@ -1,5 +1,487 @@
-                </Tooltip>
-              ) : <span style={{ color: '#ccc' }}>无</span>;
+import React, { useState, useEffect, useCallback } from 'react';
+import { 
+  Layout, 
+  Card, 
+  Tabs, 
+  Table, 
+  Button, 
+  Input, 
+  Form, 
+  message, 
+  Space, 
+  Tag, 
+  Tooltip, 
+  Modal, 
+  Alert, 
+  Row, 
+  Col, 
+  Statistic,
+  InputNumber
+} from 'antd';
+import {
+  DatabaseOutlined,
+  TransactionOutlined,
+  FileTextOutlined,
+  SendOutlined,
+  SearchOutlined,
+  EyeOutlined,
+  LeftOutlined
+} from '@ant-design/icons';
+import { Web3ReactProvider } from '@web3-react/core';
+import { ethers } from 'ethers';
+import './App.css';
+
+// 导入组件
+import WalletConnection from './components/WalletConnection';
+import ProgressBar from './components/ProgressBar';
+
+const { Header, Content } = Layout;
+const { TabPane } = Tabs;
+
+// Web3 库提供者
+const getLibrary = (provider) => {
+  return new ethers.providers.Web3Provider(provider);
+};
+
+function App() {
+  // 状态管理
+  const [account, setAccount] = useState(null);
+  const [activeTab, setActiveTab] = useState('transfer');
+  const [loading, setLoading] = useState(false);
+  const [dataRecords, setDataRecords] = useState([]);
+  const [stats, setStats] = useState({ total: 0, active: 0 });
+  const [progressVisible, setProgressVisible] = useState(false);
+  const [progressValue, setProgressValue] = useState(0);
+  const [progressStatus, setProgressStatus] = useState('active');
+  const [progressMessage, setProgressMessage] = useState('');
+  const [customDataModal, setCustomDataModal] = useState({
+    visible: false,
+    data: null,
+    title: ''
+  });
+
+  // 表单实例
+  const [transferForm] = Form.useForm();
+  const [logForm] = Form.useForm();
+  const [usdtForm] = Form.useForm();
+
+  // 初始化数据
+  useEffect(() => {
+    if (account) {
+      loadDataRecords();
+    }
+  }, [account, activeTab]);
+
+  // 加载数据记录
+  const loadDataRecords = useCallback(async () => {
+    setLoading(true);
+    try {
+      // 模拟数据加载
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      const mockData = {
+        transfer: [
+          {
+            id: 1,
+            txHash: '0x1234567890abcdef1234567890abcdef12345678',
+            dataType: 'transfer',
+            amount: '0.1',
+            token: 'ETH',
+            toAddress: '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd',
+            customData: { memo: 'Test transfer', priority: 'high' },
+            timestamp: Date.now(),
+            status: 'success'
+          }
+        ],
+        log: [
+          {
+            id: 1,
+            logLevel: 'INFO',
+            message: 'System initialized successfully',
+            creator: '0x1234567890123456789012345678901234567890',
+            timestamp: Math.floor(Date.now() / 1000),
+            customData: { module: 'core', version: '1.0.0' }
+          }
+        ],
+        usdt: [
+          {
+            id: 1,
+            txHash: '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd',
+            dataType: 'usdt',
+            amount: '100',
+            token: 'USDT',
+            toAddress: '0x9876543210987654321098765432109876543210',
+            customData: { purpose: 'payment' },
+            timestamp: Date.now(),
+            status: 'success'
+          }
+        ]
+      };
+
+      const records = mockData[activeTab] || [];
+      setDataRecords(records);
+      setStats({
+        total: records.length,
+        active: records.filter(r => r.status === 'success').length
+      });
+    } catch (error) {
+      console.error('加载数据失败:', error);
+      message.error('加载数据失败');
+    } finally {
+      setLoading(false);
+    }
+  }, [activeTab]);
+
+  // 搜索处理
+  const handleSearch = () => {
+    message.info('搜索功能待实现');
+  };
+
+  // 显示自定义数据Modal
+  const showCustomDataModal = (data, title) => {
+    setCustomDataModal({
+      visible: true,
+      data,
+      title
+    });
+  };
+
+  // 进度条相关
+  const showProgress = (message, status = 'active') => {
+    setProgressMessage(message);
+    setProgressStatus(status);
+    setProgressVisible(true);
+    setProgressValue(0);
+  };
+
+  const updateProgress = (value, message) => {
+    setProgressValue(value);
+    if (message) setProgressMessage(message);
+  };
+
+  const hideProgress = () => {
+    setProgressVisible(false);
+    setProgressValue(0);
+    setProgressStatus('active');
+    setProgressMessage('');
+  };
+
+  const handleProgressClose = () => {
+    hideProgress();
+  };
+
+  // ETH转账表单
+  const renderTransferForm = () => {
+    const handleTransfer = async (values) => {
+      if (!account) {
+        message.error('请先连接钱包');
+        return;
+      }
+
+      showProgress('正在处理ETH转账...');
+      
+      try {
+        // 模拟转账过程
+        for (let i = 0; i <= 100; i += 20) {
+          await new Promise(resolve => setTimeout(resolve, 200));
+          updateProgress(i, i < 100 ? '正在处理转账...' : '转账完成!');
+        }
+
+        message.success('ETH转账成功!');
+        transferForm.resetFields();
+        loadDataRecords();
+      } catch (error) {
+        console.error('转账失败:', error);
+        message.error('转账失败: ' + error.message);
+      } finally {
+        hideProgress();
+      }
+    };
+
+    return (
+      <Form
+        form={transferForm}
+        layout="vertical"
+        onFinish={handleTransfer}
+      >
+        <Row gutter={16}>
+          <Col span={12}>
+            <Form.Item
+              label="接收地址"
+              name="toAddress"
+              rules={[
+                { required: true, message: '请输入接收地址' },
+                { pattern: /^0x[a-fA-F0-9]{40}$/, message: '请输入有效的以太坊地址' }
+              ]}
+            >
+              <Input placeholder="0x..." />
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item
+              label="转账金额 (ETH)"
+              name="amount"
+              rules={[
+                { required: true, message: '请输入转账金额' },
+                { type: 'number', min: 0.001, message: '最小转账金额为0.001 ETH' }
+              ]}
+            >
+              <InputNumber
+                style={{ width: '100%' }}
+                placeholder="0.001"
+                min={0.001}
+                step={0.001}
+                precision={6}
+              />
+            </Form.Item>
+          </Col>
+        </Row>
+
+        <Form.Item
+          label="备注信息"
+          name="memo"
+        >
+          <Input.TextArea
+            placeholder="可选的转账备注信息"
+            rows={2}
+          />
+        </Form.Item>
+
+        <Form.Item>
+          <Button
+            type="primary"
+            htmlType="submit"
+            loading={loading}
+            disabled={!account}
+          >
+            {!account ? '请先连接钱包' : '发送ETH'}
+          </Button>
+        </Form.Item>
+      </Form>
+    );
+  };
+
+  // 日志上链表单
+  const renderLogForm = () => {
+    const handleLogSubmit = async (values) => {
+      if (!account) {
+        message.error('请先连接钱包');
+        return;
+      }
+
+      showProgress('正在将日志上链...');
+
+      try {
+        // 模拟上链过程
+        for (let i = 0; i <= 100; i += 25) {
+          await new Promise(resolve => setTimeout(resolve, 300));
+          updateProgress(i, i < 100 ? '正在处理上链...' : '日志上链完成!');
+        }
+
+        message.success('日志数据上链成功!');
+        logForm.resetFields();
+        loadDataRecords();
+      } catch (error) {
+        console.error('上链失败:', error);
+        message.error('上链失败: ' + error.message);
+      } finally {
+        hideProgress();
+      }
+    };
+
+    return (
+      <Form
+        form={logForm}
+        layout="vertical"
+        onFinish={handleLogSubmit}
+      >
+        <Row gutter={16}>
+          <Col span={12}>
+            <Form.Item
+              label="日志级别"
+              name="logLevel"
+              rules={[{ required: true, message: '请选择日志级别' }]}
+            >
+              <Input placeholder="INFO/WARN/ERROR" />
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item
+              label="模块名称"
+              name="module"
+            >
+              <Input placeholder="模块名称" />
+            </Form.Item>
+          </Col>
+        </Row>
+
+        <Form.Item
+          label="日志内容"
+          name="message"
+          rules={[{ required: true, message: '请输入日志内容' }]}
+        >
+          <Input.TextArea
+            placeholder="详细的日志信息"
+            rows={4}
+          />
+        </Form.Item>
+
+        <Form.Item>
+          <Button
+            type="primary"
+            htmlType="submit"
+            loading={loading}
+            disabled={!account}
+          >
+            {!account ? '请先连接钱包' : '提交上链'}
+          </Button>
+        </Form.Item>
+      </Form>
+    );
+  };
+
+  // USDT转账表单
+  const renderUsdtForm = () => {
+    const handleUsdtTransfer = async (values) => {
+      if (!account) {
+        message.error('请先连接钱包');
+        return;
+      }
+
+      showProgress('正在处理USDT转账...');
+
+      try {
+        // 模拟USDT转账过程
+        for (let i = 0; i <= 100; i += 20) {
+          await new Promise(resolve => setTimeout(resolve, 250));
+          updateProgress(i, i < 100 ? '正在处理USDT转账...' : 'USDT转账完成!');
+        }
+
+        message.success('USDT转账成功!');
+        usdtForm.resetFields();
+        loadDataRecords();
+      } catch (error) {
+        console.error('USDT转账失败:', error);
+        message.error('USDT转账失败: ' + error.message);
+      } finally {
+        hideProgress();
+      }
+    };
+
+    return (
+      <Form
+        form={usdtForm}
+        layout="vertical"
+        onFinish={handleUsdtTransfer}
+      >
+        <Row gutter={16}>
+          <Col span={12}>
+            <Form.Item
+              label="接收地址"
+              name="toAddress"
+              rules={[
+                { required: true, message: '请输入接收地址' },
+                { pattern: /^0x[a-fA-F0-9]{40}$/, message: '请输入有效的以太坊地址' }
+              ]}
+            >
+              <Input placeholder="0x..." />
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item
+              label="转账金额 (USDT)"
+              name="amount"
+              rules={[
+                { required: true, message: '请输入转账金额' },
+                { type: 'number', min: 1, message: '最小转账金额为1 USDT' }
+              ]}
+            >
+              <InputNumber
+                style={{ width: '100%' }}
+                placeholder="100"
+                min={1}
+                step={1}
+                precision={2}
+              />
+            </Form.Item>
+          </Col>
+        </Row>
+
+        <Form.Item
+          label="备注信息"
+          name="memo"
+        >
+          <Input.TextArea
+            placeholder="可选的转账备注信息"
+            rows={2}
+          />
+        </Form.Item>
+
+        <Form.Item>
+          <Button
+            type="primary"
+            htmlType="submit"
+            loading={loading}
+            disabled={!account}
+          >
+            {!account ? '请先连接钱包' : '发送USDT'}
+          </Button>
+        </Form.Item>
+      </Form>
+    );
+  };
+
+  // 获取表格列配置
+  const getColumns = () => {
+    if (activeTab === 'log') {
+      return [
+        {
+          title: 'ID',
+          dataIndex: 'id',
+          key: 'id',
+          width: 80
+        },
+        {
+          title: '日志级别',
+          dataIndex: 'logLevel',
+          key: 'logLevel',
+          width: 100,
+          render: (level) => {
+            let color = 'default';
+            if (level === 'ERROR') color = 'red';
+            else if (level === 'WARN') color = 'orange';
+            else if (level === 'INFO') color = 'blue';
+            return <Tag color={color}>{level}</Tag>;
+          }
+        },
+        {
+          title: '日志内容',
+          dataIndex: 'message',
+          key: 'message',
+          ellipsis: true
+        },
+        {
+          title: '自定义数据',
+          dataIndex: 'customData',
+          key: 'customData',
+          width: 120,
+          render: (customData) => {
+            try {
+              if (customData && Object.keys(customData).length > 0) {
+                return (
+                  <Tooltip title="点击查看自定义数据">
+                    <Button 
+                      type="link" 
+                      size="small"
+                      icon={<EyeOutlined />}
+                      onClick={() => showCustomDataModal(customData, '日志自定义数据')}
+                    >
+                      查看({Object.keys(customData).length})
+                    </Button>
+                  </Tooltip>
+                );
+              }
+              return <span style={{ color: '#ccc' }}>无</span>;
             } catch (e) {
               return <span style={{ color: '#ccc' }}>-</span>;
             }
