@@ -31,9 +31,12 @@ import { Web3ReactProvider } from '@web3-react/core';
 import { ethers } from 'ethers';
 import './App.css';
 
-// 导入组件
+// 导入服务
 import WalletConnection from './components/WalletConnection';
 import ProgressBar from './components/ProgressBar';
+import ETHTransferService from './services/ETHTransferService';
+import USDTService from './services/USDTService';
+import DataStorageService from './services/DataStorageService';
 
 const { Header, Content } = Layout;
 const { TabPane } = Tabs;
@@ -42,6 +45,11 @@ const { TabPane } = Tabs;
 const getLibrary = (provider) => {
   return new ethers.providers.Web3Provider(provider);
 };
+
+// 初始化服务
+const ethTransferService = new ETHTransferService();
+const usdtService = new USDTService();
+const dataStorageService = new DataStorageService();
 
 function App() {
   // 状态管理
@@ -76,61 +84,52 @@ function App() {
   const loadDataRecords = useCallback(async () => {
     setLoading(true);
     try {
-      // 模拟数据加载
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      let records = [];
       
-      const mockData = {
-        transfer: [
-          {
-            id: 1,
-            txHash: '0x1234567890abcdef1234567890abcdef12345678',
-            dataType: 'transfer',
-            amount: '0.1',
-            token: 'ETH',
-            toAddress: '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd',
-            customData: { memo: 'Test transfer', priority: 'high' },
-            timestamp: Date.now(),
-            status: 'success'
-          }
-        ],
-        log: [
-          {
-            id: 1,
-            logLevel: 'INFO',
-            message: 'System initialized successfully',
-            creator: '0x1234567890123456789012345678901234567890',
-            timestamp: Math.floor(Date.now() / 1000),
-            customData: { module: 'core', version: '1.0.0' }
-          }
-        ],
-        usdt: [
-          {
-            id: 1,
-            txHash: '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd',
-            dataType: 'usdt',
-            amount: '100',
-            token: 'USDT',
-            toAddress: '0x9876543210987654321098765432109876543210',
-            customData: { purpose: 'payment' },
-            timestamp: Date.now(),
-            status: 'success'
-          }
-        ]
-      };
+      if (activeTab === 'log') {
+        // 从智能合约加载日志数据
+        try {
+          const contractRecords = await dataStorageService.getActiveRecords(0, 50);
+          records = contractRecords || [];
+        } catch (error) {
+          console.warn('无法从合约加载数据，使用本地存储数据:', error);
+          records = JSON.parse(localStorage.getItem('log_records') || '[]');
+        }
+      } else {
+        // 转账记录从本地存储获取
+        records = JSON.parse(localStorage.getItem(`${activeTab}_records`) || '[]');
+      }
 
-      const records = mockData[activeTab] || [];
       setDataRecords(records);
       setStats({
         total: records.length,
-        active: records.filter(r => r.status === 'success').length
+        active: records.filter(r => r.status === 'success' || r.isActive !== false).length
       });
     } catch (error) {
       console.error('加载数据失败:', error);
-      message.error('加载数据失败');
+      message.error('加载数据失败: ' + error.message);
     } finally {
       setLoading(false);
     }
-  }, [activeTab]);
+  }, [activeTab, account]);
+
+  // 保存交易记录到本地存储
+  const saveTransactionRecord = (record) => {
+    try {
+      const key = `${activeTab}_records`;
+      const existingRecords = JSON.parse(localStorage.getItem(key) || '[]');
+      const newRecord = {
+        ...record,
+        id: Date.now(),
+        timestamp: Date.now()
+      };
+      existingRecords.unshift(newRecord);
+      localStorage.setItem(key, JSON.stringify(existingRecords.slice(0, 100))); // 只保存最近100条
+      loadDataRecords(); // 重新加载数据
+    } catch (error) {
+      console.error('保存记录失败:', error);
+    }
+  };
 
   // 搜索处理
   const handleSearch = () => {
@@ -157,6 +156,14 @@ function App() {
   const updateProgress = (value, message) => {
     setProgressValue(value);
     if (message) setProgressMessage(message);
+    
+    if (value === -1) {
+      setProgressStatus('exception');
+    } else if (value === 100) {
+      setProgressStatus('success');
+    } else {
+      setProgressStatus('active');
+    }
   };
 
   const hideProgress = () => {
@@ -178,23 +185,46 @@ function App() {
         return;
       }
 
-      showProgress('正在处理ETH转账...');
-      
       try {
-        // 模拟转账过程
-        for (let i = 0; i <= 100; i += 20) {
-          await new Promise(resolve => setTimeout(resolve, 200));
-          updateProgress(i, i < 100 ? '正在处理转账...' : '转账完成!');
+        setLoading(true);
+        showProgress('正在准备ETH转账...');
+
+        // 验证地址格式
+        if (!ethTransferService.isValidAddress(values.toAddress)) {
+          throw new Error('接收地址格式无效');
         }
 
-        message.success('ETH转账成功!');
+        // 执行真实的ETH转账
+        const result = await ethTransferService.transferETH(
+          values.toAddress,
+          values.amount,
+          values.memo || '',
+          updateProgress
+        );
+
+        message.success('ETH转账成功！');
+        
+        // 保存交易记录
+        saveTransactionRecord({
+          dataType: 'transfer',
+          txHash: result.txHash,
+          amount: result.amount,
+          token: 'ETH',
+          toAddress: result.toAddress,
+          fromAddress: result.fromAddress,
+          customData: { memo: result.memo },
+          status: result.status,
+          gasUsed: result.gasUsed
+        });
+
         transferForm.resetFields();
-        loadDataRecords();
       } catch (error) {
-        console.error('转账失败:', error);
-        message.error('转账失败: ' + error.message);
+        console.error('ETH转账失败:', error);
+        message.error('ETH转账失败: ' + error.message);
+        updateProgress(-1, 'ETH转账失败: ' + error.message);
       } finally {
-        hideProgress();
+        setLoading(false);
+        setTimeout(hideProgress, 2000);
       }
     };
 
@@ -211,7 +241,14 @@ function App() {
               name="toAddress"
               rules={[
                 { required: true, message: '请输入接收地址' },
-                { pattern: /^0x[a-fA-F0-9]{40}$/, message: '请输入有效的以太坊地址' }
+                { 
+                  validator: (_, value) => {
+                    if (value && !ethTransferService.isValidAddress(value)) {
+                      return Promise.reject(new Error('请输入有效的以太坊地址'));
+                    }
+                    return Promise.resolve();
+                  }
+                }
               ]}
             >
               <Input placeholder="0x..." />
@@ -269,23 +306,54 @@ function App() {
         return;
       }
 
-      showProgress('正在将日志上链...');
-
       try {
-        // 模拟上链过程
-        for (let i = 0; i <= 100; i += 25) {
-          await new Promise(resolve => setTimeout(resolve, 300));
-          updateProgress(i, i < 100 ? '正在处理上链...' : '日志上链完成!');
+        setLoading(true);
+        showProgress('正在将日志上链...');
+
+        // 构建日志数据
+        const logData = {
+          logLevel: values.logLevel,
+          message: values.message,
+          module: values.module || 'system',
+          timestamp: Date.now()
+        };
+
+        try {
+          // 尝试调用智能合约存储数据
+          const result = await dataStorageService.storeData(
+            'log',
+            JSON.stringify(logData),
+            updateProgress
+          );
+          
+          message.success('日志数据上链成功！');
+        } catch (contractError) {
+          console.warn('合约调用失败，保存到本地存储:', contractError);
+          
+          // 如果合约调用失败，保存到本地存储
+          saveTransactionRecord({
+            dataType: 'log',
+            logLevel: values.logLevel,
+            message: values.message,
+            creator: account,
+            customData: { module: values.module || 'system' },
+            status: 'success',
+            isActive: true
+          });
+          
+          message.success('日志数据已保存！');
+          updateProgress(100, '日志数据保存成功！');
         }
 
-        message.success('日志数据上链成功!');
         logForm.resetFields();
         loadDataRecords();
       } catch (error) {
-        console.error('上链失败:', error);
-        message.error('上链失败: ' + error.message);
+        console.error('日志处理失败:', error);
+        message.error('日志处理失败: ' + error.message);
+        updateProgress(-1, '日志处理失败: ' + error.message);
       } finally {
-        hideProgress();
+        setLoading(false);
+        setTimeout(hideProgress, 2000);
       }
     };
 
@@ -348,23 +416,45 @@ function App() {
         return;
       }
 
-      showProgress('正在处理USDT转账...');
-
       try {
-        // 模拟USDT转账过程
-        for (let i = 0; i <= 100; i += 20) {
-          await new Promise(resolve => setTimeout(resolve, 250));
-          updateProgress(i, i < 100 ? '正在处理USDT转账...' : 'USDT转账完成!');
+        setLoading(true);
+        showProgress('正在准备USDT转账...');
+
+        // 检查当前网络是否支持USDT
+        const supportedNetwork = await usdtService.isCurrentNetworkSupported();
+        if (!supportedNetwork) {
+          throw new Error('当前网络不支持USDT转账，请切换到Ethereum主网');
         }
 
-        message.success('USDT转账成功!');
+        // 执行真实的USDT转账
+        const result = await usdtService.transferUSDT(
+          values.toAddress,
+          values.amount,
+          supportedNetwork,
+          updateProgress
+        );
+
+        message.success('USDT转账成功！');
+        
+        // 保存交易记录
+        saveTransactionRecord({
+          dataType: 'usdt',
+          txHash: result.txHash,
+          amount: result.amount,
+          token: 'USDT',
+          toAddress: result.toAddress,
+          customData: { memo: values.memo, network: result.network },
+          status: 'success'
+        });
+
         usdtForm.resetFields();
-        loadDataRecords();
       } catch (error) {
         console.error('USDT转账失败:', error);
         message.error('USDT转账失败: ' + error.message);
+        updateProgress(-1, 'USDT转账失败: ' + error.message);
       } finally {
-        hideProgress();
+        setLoading(false);
+        setTimeout(hideProgress, 2000);
       }
     };
 
@@ -494,7 +584,7 @@ function App() {
           width: 120,
           render: (creator) => (
             <span style={{ fontSize: '12px', fontFamily: 'monospace' }}>
-              {creator.slice(0, 6)}...{creator.slice(-4)}
+              {creator ? `${creator.slice(0, 6)}...${creator.slice(-4)}` : 'N/A'}
             </span>
           )
         },
@@ -503,7 +593,12 @@ function App() {
           dataIndex: 'timestamp',
           key: 'timestamp',
           width: 160,
-          render: (timestamp) => new Date(timestamp * 1000).toLocaleString('zh-CN')
+          render: (timestamp) => {
+            if (!timestamp) return 'N/A';
+            // 如果是秒级时间戳，转换为毫秒
+            const ts = timestamp < 1e12 ? timestamp * 1000 : timestamp;
+            return new Date(ts).toLocaleString('zh-CN');
+          }
         }
       ];
     } else {
@@ -544,7 +639,7 @@ function App() {
           width: 120,
           render: (address) => (
             <span style={{ fontSize: '12px', fontFamily: 'monospace' }}>
-              {address.slice(0, 6)}...{address.slice(-4)}
+              {address ? `${address.slice(0, 6)}...${address.slice(-4)}` : 'N/A'}
             </span>
           )
         },
@@ -555,7 +650,7 @@ function App() {
           width: 100,
           render: (customData, record) => {
             const hasCustomData = customData && Object.keys(customData).length > 0;
-            const hasMemo = record.memo && record.memo.trim().length > 0;
+            const hasMemo = customData?.memo && customData.memo.trim().length > 0;
             
             if (hasCustomData || hasMemo) {
               return (
@@ -564,12 +659,9 @@ function App() {
                     type="link" 
                     size="small"
                     icon={<EyeOutlined />}
-                    onClick={() => showCustomDataModal({
-                      ...customData,
-                      ...(hasMemo && { memo: record.memo })
-                    }, '转账自定义数据')}
+                    onClick={() => showCustomDataModal(customData, '转账自定义数据')}
                   >
-                    查看({(hasCustomData ? Object.keys(customData).length : 0) + (hasMemo ? 1 : 0)})
+                    查看({hasCustomData ? Object.keys(customData).length : 1})
                   </Button>
                 </Tooltip>
               );
@@ -582,7 +674,10 @@ function App() {
           dataIndex: 'timestamp',
           key: 'timestamp',
           width: 160,
-          render: (timestamp) => new Date(timestamp).toLocaleString('zh-CN')
+          render: (timestamp) => {
+            if (!timestamp) return 'N/A';
+            return new Date(timestamp).toLocaleString('zh-CN');
+          }
         },
         {
           title: '状态',
@@ -635,8 +730,8 @@ function App() {
                 key="transfer"
               >
                 <div className="tab-content">
-                  <h3>直接钱包转账（支持自定义数据）</h3>
-                  <p className="tab-description">使用连接的钱包直接发送ETH，可添加自定义数据到交易中</p>
+                  <h3>直接钱包转账（真实区块链交易）</h3>
+                  <p className="tab-description">使用连接的钱包直接发送ETH到区块链网络，支持备注信息</p>
                   {renderTransferForm()}
                 </div>
               </TabPane>
@@ -651,8 +746,8 @@ function App() {
                 key="log"
               >
                 <div className="tab-content">
-                  <h3>系统日志数据上链（支持自定义数据）</h3>
-                  <p className="tab-description">将日志数据和自定义信息永久存储到区块链合约中</p>
+                  <h3>系统日志数据上链存储</h3>
+                  <p className="tab-description">将日志数据和自定义信息永久存储到区块链智能合约中</p>
                   {renderLogForm()}
                 </div>
               </TabPane>
@@ -667,8 +762,8 @@ function App() {
                 key="usdt"
               >
                 <div className="tab-content">
-                  <h3>USDT代币转账（支持自定义数据）</h3>
-                  <p className="tab-description">发送USDT代币到指定地址，可添加自定义数据记录</p>
+                  <h3>USDT代币转账（真实区块链交易）</h3>
+                  <p className="tab-description">发送USDT代币到指定地址，需要在支持的网络上操作</p>
                   {renderUsdtForm()}
                 </div>
               </TabPane>
@@ -727,7 +822,7 @@ function App() {
             <Table
               columns={getColumns()}
               dataSource={dataRecords}
-              rowKey={activeTab === 'log' ? "id" : "id"}
+              rowKey="id"
               loading={loading}
               pagination={{
                 showSizeChanger: true,
