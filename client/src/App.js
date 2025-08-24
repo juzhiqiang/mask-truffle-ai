@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Web3ReactProvider } from '@web3-react/core';
 import { Web3Provider } from '@ethersproject/providers';
-import { Layout, Card, Input, Button, Select, Table, Space, Modal, Form, message, Tag, Statistic, Row, Col, Tabs } from 'antd';
-import { SearchOutlined, PlusOutlined, WalletOutlined, DatabaseOutlined, LeftOutlined, SendOutlined, FileTextOutlined, TransactionOutlined } from '@ant-design/icons';
+import { Layout, Card, Input, Button, Select, Table, Space, Modal, Form, message, Tag, Statistic, Row, Col, Tabs, Alert } from 'antd';
+import { SearchOutlined, PlusOutlined, WalletOutlined, DatabaseOutlined, LeftOutlined, SendOutlined, FileTextOutlined, TransactionOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import WalletConnection from './components/WalletConnection';
 import ProgressBar from './components/ProgressBar';
 import DataStorageService from './services/DataStorageService';
+import USDTService from './services/USDTService';
 import './App.css';
 
 const { Header, Content } = Layout;
@@ -29,6 +30,7 @@ function App() {
   const [stats, setStats] = useState({ total: 0, active: 0, totalTypes: 0 });
   const [account, setAccount] = useState('');
   const [dataService, setDataService] = useState(null);
+  const [usdtService, setUsdtService] = useState(null);
 
   // 进度条相关状态
   const [progressVisible, setProgressVisible] = useState(false);
@@ -41,17 +43,29 @@ function App() {
   const [logForm] = Form.useForm();
   const [usdtForm] = Form.useForm();
 
+  // USDT相关状态
+  const [usdtBalance, setUsdtBalance] = useState('0');
+  const [currentNetwork, setCurrentNetwork] = useState('ethereum');
+
   useEffect(() => {
     if (account) {
-      const service = new DataStorageService();
-      setDataService(service);
-      // 只在日志tab时加载合约数据
+      const logService = new DataStorageService();
+      const tokenService = new USDTService();
+      
+      setDataService(logService);
+      setUsdtService(tokenService);
+      
+      // 根据当前tab加载对应数据
       if (activeTab === 'log') {
-        loadInitialData(service);
-        loadStats(service);
+        loadInitialData(logService);
+        loadStats(logService);
       } else {
-        // 对于转账tab，只加载本地数据
         loadTransferHistory();
+      }
+
+      // 如果在USDT tab，加载USDT余额
+      if (activeTab === 'usdt') {
+        loadUSDTBalance(tokenService);
       }
     }
   }, [account, activeTab]);
@@ -103,6 +117,25 @@ function App() {
     }
   };
 
+  const loadUSDTBalance = async (service) => {
+    try {
+      if (account && service) {
+        const supportedNetwork = await service.isCurrentNetworkSupported();
+        if (supportedNetwork) {
+          setCurrentNetwork(supportedNetwork);
+          const balance = await service.getUSDTBalance(account, supportedNetwork);
+          setUsdtBalance(balance);
+        } else {
+          setUsdtBalance('0');
+          message.warning('当前网络不支持USDT，请切换到以太坊主网');
+        }
+      }
+    } catch (error) {
+      console.error('加载USDT余额失败:', error);
+      setUsdtBalance('0');
+    }
+  };
+
   const handleSearch = async () => {
     if (!account) {
       message.warning('请先连接钱包');
@@ -147,8 +180,8 @@ function App() {
     }
   };
 
-  // 直接钱包转账功能
-  const handleWalletTransfer = async (values, type) => {
+  // 直接钱包ETH转账功能
+  const handleETHTransfer = async (values) => {
     if (!window.ethereum || !account) {
       message.error('请先连接钱包');
       return;
@@ -158,7 +191,7 @@ function App() {
     setProgressVisible(true);
     setProgressValue(0);
     setProgressStatus('active');
-    setProgressMessage('正在准备转账...');
+    setProgressMessage('正在准备ETH转账...');
 
     try {
       const { ethers } = require('ethers');
@@ -181,7 +214,7 @@ function App() {
       const gasEstimate = await signer.estimateGas(txData);
       txData.gasLimit = gasEstimate.mul(120).div(100); // 增加20%缓冲
 
-      handleProgressUpdate(60, '正在发送交易...');
+      handleProgressUpdate(60, '正在发送ETH转账交易...');
 
       // 发送交易
       const tx = await signer.sendTransaction(txData);
@@ -191,16 +224,16 @@ function App() {
       // 等待确认
       const receipt = await tx.wait();
 
-      handleProgressUpdate(100, '转账成功！');
+      handleProgressUpdate(100, 'ETH转账成功！');
 
-      // 保存转账记录到localStorage
+      // 保存转账记录
       const transferRecord = {
         id: Date.now(),
-        dataType: type,
+        dataType: 'transfer',
         fromAddress: account,
         toAddress: values.toAddress,
         amount: values.amount,
-        token: values.token || 'ETH',
+        token: 'ETH',
         txHash: tx.hash,
         timestamp: new Date().toISOString(),
         status: 'success',
@@ -211,20 +244,69 @@ function App() {
       // 更新localStorage
       const history = JSON.parse(localStorage.getItem('transferHistory') || '[]');
       history.unshift(transferRecord);
-      localStorage.setItem('transferHistory', JSON.stringify(history.slice(0, 100))); // 只保留最近100条
+      localStorage.setItem('transferHistory', JSON.stringify(history.slice(0, 100)));
 
-      message.success('转账成功！');
-      
-      // 重置表单和刷新数据
-      if (type === 'transfer') transferForm.resetFields();
-      if (type === 'usdt') usdtForm.resetFields();
-      
+      message.success('ETH转账成功！');
+      transferForm.resetFields();
       loadTransferHistory();
 
     } catch (error) {
-      console.error('转账失败:', error);
-      handleProgressUpdate(-1, `转账失败: ${error.message}`);
-      message.error('转账失败: ' + error.message);
+      console.error('ETH转账失败:', error);
+      handleProgressUpdate(-1, `ETH转账失败: ${error.message}`);
+      message.error('ETH转账失败: ' + error.message);
+    }
+  };
+
+  // USDT转账功能
+  const handleUSDTTransfer = async (values) => {
+    if (!usdtService || !account) {
+      message.error('请先连接钱包');
+      return;
+    }
+
+    // 显示进度条
+    setProgressVisible(true);
+    setProgressValue(0);
+    setProgressStatus('active');
+    setProgressMessage('正在准备USDT转账...');
+
+    try {
+      const result = await usdtService.transferUSDT(
+        values.toAddress,
+        values.amount,
+        currentNetwork,
+        handleProgressUpdate
+      );
+
+      // 保存USDT转账记录
+      const transferRecord = {
+        id: Date.now(),
+        dataType: 'usdt',
+        fromAddress: account,
+        toAddress: values.toAddress,
+        amount: values.amount,
+        token: 'USDT',
+        txHash: result.txHash,
+        timestamp: new Date().toISOString(),
+        status: 'success',
+        network: currentNetwork
+      };
+
+      // 更新localStorage
+      const history = JSON.parse(localStorage.getItem('transferHistory') || '[]');
+      history.unshift(transferRecord);
+      localStorage.setItem('transferHistory', JSON.stringify(history.slice(0, 100)));
+
+      message.success('USDT转账成功！');
+      usdtForm.resetFields();
+      loadTransferHistory();
+      
+      // 刷新USDT余额
+      loadUSDTBalance(usdtService);
+
+    } catch (error) {
+      console.error('USDT转账失败:', error);
+      message.error('USDT转账失败: ' + error.message);
     }
   };
 
@@ -269,16 +351,18 @@ function App() {
   const handleSubmit = async (values, type) => {
     if (type === 'log') {
       await handleLogSubmit(values);
-    } else {
-      await handleWalletTransfer(values, type);
+    } else if (type === 'transfer') {
+      await handleETHTransfer(values);
+    } else if (type === 'usdt') {
+      await handleUSDTTransfer(values);
     }
   };
 
   const getTabName = (type) => {
     switch (type) {
-      case 'transfer': return '转账';
+      case 'transfer': return 'ETH转账';
       case 'log': return '日志';
-      case 'usdt': return 'USDT发送';
+      case 'usdt': return 'USDT转账';
       default: return '';
     }
   };
@@ -298,6 +382,14 @@ function App() {
       onFinish={(values) => handleSubmit(values, 'transfer')}
       className="data-form"
     >
+      <Alert
+        message="直接钱包转账"
+        description="这将直接使用您的钱包发送ETH，不会存储到区块链合约中"
+        type="info"
+        showIcon
+        style={{ marginBottom: 16 }}
+      />
+      
       <Row gutter={16}>
         <Col xs={24} md={12}>
           <Form.Item
@@ -320,17 +412,6 @@ function App() {
       </Row>
       
       <Row gutter={16}>
-        <Col xs={24} md={12}>
-          <Form.Item
-            label="代币类型"
-            name="token"
-            initialValue="ETH"
-          >
-            <Select disabled>
-              <Option value="ETH">ETH (主网币)</Option>
-            </Select>
-          </Form.Item>
-        </Col>
         <Col xs={24} md={12}>
           <Form.Item
             label="Gas价格 (Gwei)"
@@ -373,6 +454,14 @@ function App() {
       onFinish={(values) => handleSubmit(values, 'log')}
       className="data-form"
     >
+      <Alert
+        message="区块链日志存储"
+        description="日志数据将永久存储在区块链合约中，无法删除或修改"
+        type="warning"
+        showIcon
+        style={{ marginBottom: 16 }}
+      />
+
       <Row gutter={16}>
         <Col xs={24} md={8}>
           <Form.Item
@@ -440,6 +529,14 @@ function App() {
       onFinish={(values) => handleSubmit(values, 'usdt')}
       className="data-form"
     >
+      <Alert
+        message={`USDT代币转账 - 当前余额: ${usdtBalance} USDT`}
+        description={`网络: ${currentNetwork === 'ethereum' ? 'Ethereum 主网' : currentNetwork}`}
+        type="info"
+        showIcon
+        style={{ marginBottom: 16 }}
+      />
+
       <Row gutter={16}>
         <Col xs={24} md={12}>
           <Form.Item
@@ -456,32 +553,20 @@ function App() {
             name="amount"
             rules={[{ required: true, message: '请输入USDT金额' }]}
           >
-            <Input type="number" placeholder="0.00" step="0.01" />
-          </Form.Item>
-        </Col>
-      </Row>
-      
-      <Row gutter={16}>
-        <Col xs={24} md={12}>
-          <Form.Item
-            label="网络"
-            name="network"
-            initialValue="Ethereum"
-          >
-            <Select>
-              <Option value="Ethereum">Ethereum</Option>
-              <Option value="BSC">BSC</Option>
-              <Option value="Polygon">Polygon</Option>
-              <Option value="Tron">Tron</Option>
-            </Select>
-          </Form.Item>
-        </Col>
-        <Col xs={24} md={12}>
-          <Form.Item
-            label="Gas价格 (Gwei)"
-            name="gasPrice"
-          >
-            <Input type="number" placeholder="自动设置" />
+            <Input 
+              type="number" 
+              placeholder="0.00" 
+              step="0.01"
+              addonAfter={
+                <Button 
+                  type="link" 
+                  size="small"
+                  onClick={() => usdtForm.setFieldsValue({ amount: usdtBalance })}
+                >
+                  全部
+                </Button>
+              }
+            />
           </Form.Item>
         </Col>
       </Row>
@@ -494,16 +579,19 @@ function App() {
             icon={<SendOutlined />} 
             size="large"
             loading={progressVisible && progressStatus === 'active'}
-            disabled={progressVisible && progressStatus === 'active'}
+            disabled={progressVisible && progressStatus === 'active' || parseFloat(usdtBalance) === 0}
           >
             发送USDT
           </Button>
           <Button 
-            onClick={() => usdtForm.resetFields()} 
+            onClick={() => {
+              usdtForm.resetFields();
+              loadUSDTBalance(usdtService);
+            }}
             size="large"
             disabled={progressVisible && progressStatus === 'active'}
           >
-            重置
+            刷新余额
           </Button>
         </Space>
       </Form.Item>
@@ -592,7 +680,7 @@ function App() {
           width: 80,
           render: (type) => {
             let color = type === 'transfer' ? 'blue' : 'gold';
-            let text = type === 'transfer' ? '转账' : 'USDT';
+            let text = type === 'transfer' ? 'ETH' : 'USDT';
             return <Tag color={color}>{text}</Tag>;
           }
         },
@@ -667,7 +755,7 @@ function App() {
                 tab={
                   <span>
                     <TransactionOutlined />
-                    钱包转账
+                    ETH转账
                   </span>
                 } 
                 key="transfer"
@@ -706,7 +794,7 @@ function App() {
               >
                 <div className="tab-content">
                   <h3>USDT代币转账</h3>
-                  <p className="tab-description">发送USDT代币到指定地址（需要USDT合约地址）</p>
+                  <p className="tab-description">发送USDT代币到指定地址</p>
                   {renderUsdtForm()}
                 </div>
               </TabPane>
