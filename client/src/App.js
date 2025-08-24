@@ -1,36 +1,342 @@
-        // 保存交易记录（包含备注，即使未上链）
-        saveTransactionRecord({
-          dataType: 'transfer',
-          txHash: result.txHash,
-          amount: result.amount,
-          token: 'ETH',
-          toAddress: result.toAddress,
-          fromAddress: result.fromAddress,
-          customData: { 
-            memo: values.memo || '',
-            memoIncludedOnChain: result.memoIncludedOnChain || false,
-            isContract: result.isContract || false
-          },
-          status: result.status,
-          gasUsed: result.gasUsed
-        });
+import React, { useState, useEffect } from 'react';
+import { Layout, Menu, Card, Form, Input, InputNumber, Button, Row, Col, message, Tabs, Table, Modal, Badge, Typography, Space, Divider } from 'antd';
+import { SendOutlined, HistoryOutlined, WalletOutlined, DatabaseOutlined, EyeOutlined } from '@ant-design/icons';
 
-        transferForm.resetFields();
+// 导入组件和服务
+import WalletConnection from './components/WalletConnection';
+import ProgressBar from './components/ProgressBar';
+import ETHTransferService from './services/ETHTransferService';
+import USDTService from './services/USDTService';
+import DataStorageService from './services/DataStorageService';
+import './App.css';
+
+const { Header, Content, Footer } = Layout;
+const { TabPane } = Tabs;
+const { Title, Text, Paragraph } = Typography;
+
+function App() {
+  // 状态管理
+  const [account, setAccount] = useState(null);
+  const [ethBalance, setEthBalance] = useState('0');
+  const [usdtBalance, setUsdtBalance] = useState('0');
+  const [network, setNetwork] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [transactionRecords, setTransactionRecords] = useState([]);
+  const [customDataRecords, setCustomDataRecords] = useState([]);
+  
+  // 进度条状态
+  const [progressVisible, setProgressVisible] = useState(false);
+  const [progressPercent, setProgressPercent] = useState(0);
+  const [progressStatus, setProgressStatus] = useState('');
+
+  // Modal状态
+  const [viewModalVisible, setViewModalVisible] = useState(false);
+  const [selectedRecord, setSelectedRecord] = useState(null);
+
+  // 表单实例
+  const [ethTransferForm] = Form.useForm();
+  const [usdtTransferForm] = Form.useForm();
+  const [customDataForm] = Form.useForm();
+
+  // 服务实例
+  const [ethTransferService] = useState(() => new ETHTransferService());
+  const [usdtService] = useState(() => new USDTService());
+  const [dataStorageService] = useState(() => new DataStorageService());
+
+  // 进度条控制函数
+  const showProgress = () => setProgressVisible(true);
+  const hideProgress = () => setProgressVisible(false);
+  const updateProgress = (percent, status) => {
+    setProgressPercent(percent);
+    setProgressStatus(status);
+    if (percent >= 100 || percent < 0) {
+      setTimeout(hideProgress, 2000);
+    }
+  };
+
+  // 钱包连接回调
+  const handleWalletConnect = async (walletAccount) => {
+    try {
+      setAccount(walletAccount);
+      console.log('Wallet connected:', walletAccount);
+      
+      // 获取ETH余额
+      try {
+        const ethBal = await ethTransferService.getBalance(walletAccount);
+        setEthBalance(ethBal);
       } catch (error) {
-        console.error('ETH转账失败:', error);
-        message.error('ETH转账失败: ' + error.message);
-        updateProgress(-1, 'ETH转账失败: ' + error.message);
-      } finally {
-        setLoading(false);
-        setTimeout(hideProgress, 2000);
+        console.error('Failed to get ETH balance:', error);
+        setEthBalance('0');
       }
-    };
 
+      // 获取USDT余额
+      try {
+        const usdtBal = await usdtService.getBalance(walletAccount);
+        setUsdtBalance(usdtBal);
+      } catch (error) {
+        console.error('Failed to get USDT balance:', error);
+        setUsdtBalance('0');
+      }
+
+      // 获取网络信息
+      try {
+        const networkInfo = await ethTransferService.getCurrentNetwork();
+        setNetwork(networkInfo);
+      } catch (error) {
+        console.error('Failed to get network info:', error);
+      }
+
+      // 加载交易记录
+      loadTransactionRecords();
+      loadCustomDataRecords();
+
+    } catch (error) {
+      console.error('Wallet connection error:', error);
+      message.error('钱包连接失败: ' + error.message);
+    }
+  };
+
+  // 钱包断开连接回调
+  const handleWalletDisconnect = () => {
+    setAccount(null);
+    setEthBalance('0');
+    setUsdtBalance('0');
+    setNetwork(null);
+    setTransactionRecords([]);
+    setCustomDataRecords([]);
+  };
+
+  // 保存交易记录
+  const saveTransactionRecord = (record) => {
+    const newRecord = {
+      ...record,
+      id: Date.now().toString(),
+      timestamp: new Date().toISOString(),
+      date: new Date().toLocaleString()
+    };
+    setTransactionRecords(prev => [newRecord, ...prev]);
+    localStorage.setItem('transactionRecords', JSON.stringify([newRecord, ...transactionRecords]));
+  };
+
+  // 加载交易记录
+  const loadTransactionRecords = () => {
+    try {
+      const stored = localStorage.getItem('transactionRecords');
+      if (stored) {
+        setTransactionRecords(JSON.parse(stored));
+      }
+    } catch (error) {
+      console.error('Failed to load transaction records:', error);
+    }
+  };
+
+  // 保存自定义数据记录
+  const saveCustomDataRecord = (record) => {
+    const newRecord = {
+      ...record,
+      id: Date.now().toString(),
+      timestamp: new Date().toISOString(),
+      date: new Date().toLocaleString()
+    };
+    setCustomDataRecords(prev => [newRecord, ...prev]);
+    localStorage.setItem('customDataRecords', JSON.stringify([newRecord, ...customDataRecords]));
+  };
+
+  // 加载自定义数据记录
+  const loadCustomDataRecords = () => {
+    try {
+      const stored = localStorage.getItem('customDataRecords');
+      if (stored) {
+        setCustomDataRecords(JSON.parse(stored));
+      }
+    } catch (error) {
+      console.error('Failed to load custom data records:', error);
+    }
+  };
+
+  // 组件挂载时加载数据
+  useEffect(() => {
+    loadTransactionRecords();
+    loadCustomDataRecords();
+  }, []);
+
+  // ETH转账处理
+  const handleETHTransfer = async (values) => {
+    if (!account) {
+      message.error('请先连接钱包');
+      return;
+    }
+
+    setLoading(true);
+    showProgress();
+    
+    try {
+      updateProgress(5, '开始ETH转账...');
+
+      // 尝试标准转账（带备注）
+      let result;
+      try {
+        result = await ethTransferService.transferETH(
+          values.toAddress,
+          values.amount,
+          values.memo || '',
+          updateProgress
+        );
+      } catch (error) {
+        // 如果带数据的转账失败，尝试简化转账
+        console.log('Standard transfer failed, trying simple transfer:', error.message);
+        updateProgress(30, '使用简化模式重试...');
+        
+        result = await ethTransferService.transferETHSimple(
+          values.toAddress,
+          values.amount,
+          updateProgress
+        );
+        
+        // 添加简化转账的标记
+        result.memoIncludedOnChain = false;
+        result.memo = values.memo || '';
+      }
+
+      // 保存交易记录（包含备注，即使未上链）
+      saveTransactionRecord({
+        dataType: 'transfer',
+        txHash: result.txHash,
+        amount: result.amount,
+        token: 'ETH',
+        toAddress: result.toAddress,
+        fromAddress: result.fromAddress,
+        customData: { 
+          memo: values.memo || '',
+          memoIncludedOnChain: result.memoIncludedOnChain || false,
+          isContract: result.isContract || false
+        },
+        status: result.status,
+        gasUsed: result.gasUsed
+      });
+
+      message.success('ETH转账成功！');
+      ethTransferForm.resetFields();
+
+      // 更新余额
+      try {
+        const newBalance = await ethTransferService.getBalance(account);
+        setEthBalance(newBalance);
+      } catch (error) {
+        console.error('Failed to update balance:', error);
+      }
+
+    } catch (error) {
+      console.error('ETH转账失败:', error);
+      message.error('ETH转账失败: ' + error.message);
+      updateProgress(-1, 'ETH转账失败: ' + error.message);
+    } finally {
+      setLoading(false);
+      setTimeout(hideProgress, 2000);
+    }
+  };
+
+  // USDT转账处理
+  const handleUSDTTransfer = async (values) => {
+    if (!account) {
+      message.error('请先连接钱包');
+      return;
+    }
+
+    setLoading(true);
+    showProgress();
+    
+    try {
+      updateProgress(5, '开始USDT转账...');
+
+      const result = await usdtService.transferUSDT(
+        values.toAddress,
+        values.amount,
+        updateProgress
+      );
+
+      // 保存交易记录
+      saveTransactionRecord({
+        dataType: 'transfer',
+        txHash: result.txHash,
+        amount: result.amount,
+        token: 'USDT',
+        toAddress: result.toAddress,
+        fromAddress: result.fromAddress,
+        status: result.status,
+        gasUsed: result.gasUsed
+      });
+
+      message.success('USDT转账成功！');
+      usdtTransferForm.resetFields();
+
+      // 更新余额
+      try {
+        const newBalance = await usdtService.getBalance(account);
+        setUsdtBalance(newBalance);
+      } catch (error) {
+        console.error('Failed to update USDT balance:', error);
+      }
+
+    } catch (error) {
+      console.error('USDT转账失败:', error);
+      message.error('USDT转账失败: ' + error.message);
+      updateProgress(-1, 'USDT转账失败: ' + error.message);
+    } finally {
+      setLoading(false);
+      setTimeout(hideProgress, 2000);
+    }
+  };
+
+  // 自定义数据提交处理
+  const handleCustomDataSubmit = async (values) => {
+    if (!account) {
+      message.error('请先连接钱包');
+      return;
+    }
+
+    setLoading(true);
+    showProgress();
+    
+    try {
+      updateProgress(10, '开始提交自定义数据...');
+
+      const result = await dataStorageService.storeCustomData(
+        values.dataType,
+        values.customData,
+        updateProgress
+      );
+
+      // 保存记录
+      saveCustomDataRecord({
+        dataType: values.dataType,
+        customData: values.customData,
+        txHash: result.txHash,
+        fromAddress: account,
+        status: result.status,
+        gasUsed: result.gasUsed
+      });
+
+      message.success('自定义数据提交成功！');
+      customDataForm.resetFields();
+
+    } catch (error) {
+      console.error('自定义数据提交失败:', error);
+      message.error('数据提交失败: ' + error.message);
+      updateProgress(-1, '数据提交失败: ' + error.message);
+    } finally {
+      setLoading(false);
+      setTimeout(hideProgress, 2000);
+    }
+  };
+
+  // ETH转账表单组件
+  const ETHTransferForm = () => {
     return (
       <Form
-        form={transferForm}
+        form={ethTransferForm}
         layout="vertical"
-        onFinish={handleTransfer}
+        onFinish={handleETHTransfer}
       >
         <Row gutter={16}>
           <Col span={12}>
@@ -89,6 +395,7 @@
             htmlType="submit"
             loading={loading}
             disabled={!account}
+            icon={<SendOutlined />}
           >
             {!account ? '请先连接钱包' : '发送ETH'}
           </Button>
@@ -96,3 +403,405 @@
       </Form>
     );
   };
+
+  // USDT转账表单组件
+  const USDTTransferForm = () => {
+    return (
+      <Form
+        form={usdtTransferForm}
+        layout="vertical"
+        onFinish={handleUSDTTransfer}
+      >
+        <Row gutter={16}>
+          <Col span={12}>
+            <Form.Item
+              label="接收地址"
+              name="toAddress"
+              rules={[
+                { required: true, message: '请输入接收地址' },
+                { 
+                  validator: (_, value) => {
+                    if (value && !ethTransferService.isValidAddress(value)) {
+                      return Promise.reject(new Error('请输入有效的以太坊地址'));
+                    }
+                    return Promise.resolve();
+                  }
+                }
+              ]}
+            >
+              <Input placeholder="0x..." />
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item
+              label="转账金额 (USDT)"
+              name="amount"
+              rules={[
+                { required: true, message: '请输入转账金额' },
+                { type: 'number', min: 0.01, message: '最小转账金额为0.01 USDT' }
+              ]}
+            >
+              <InputNumber
+                style={{ width: '100%' }}
+                placeholder="1.00"
+                min={0.01}
+                step={0.01}
+                precision={2}
+              />
+            </Form.Item>
+          </Col>
+        </Row>
+
+        <Form.Item>
+          <Button
+            type="primary"
+            htmlType="submit"
+            loading={loading}
+            disabled={!account}
+            icon={<SendOutlined />}
+          >
+            {!account ? '请先连接钱包' : '发送USDT'}
+          </Button>
+        </Form.Item>
+      </Form>
+    );
+  };
+
+  // 自定义数据表单组件
+  const CustomDataForm = () => {
+    return (
+      <Form
+        form={customDataForm}
+        layout="vertical"
+        onFinish={handleCustomDataSubmit}
+      >
+        <Form.Item
+          label="数据类型"
+          name="dataType"
+          rules={[{ required: true, message: '请输入数据类型' }]}
+        >
+          <Input placeholder="例如：message、document、log等" />
+        </Form.Item>
+
+        <Form.Item
+          label="自定义数据"
+          name="customData"
+          rules={[{ required: true, message: '请输入要存储的数据' }]}
+        >
+          <Input.TextArea
+            placeholder="输入要存储到区块链的自定义数据..."
+            rows={6}
+            showCount
+            maxLength={1000}
+          />
+        </Form.Item>
+
+        <Form.Item>
+          <Button
+            type="primary"
+            htmlType="submit"
+            loading={loading}
+            disabled={!account}
+            icon={<DatabaseOutlined />}
+          >
+            {!account ? '请先连接钱包' : '提交数据到链上'}
+          </Button>
+        </Form.Item>
+      </Form>
+    );
+  };
+
+  // 交易记录表格列定义
+  const transactionColumns = [
+    {
+      title: '类型',
+      dataIndex: 'token',
+      key: 'token',
+      render: (token) => <Badge color={token === 'ETH' ? 'blue' : 'green'} text={token} />
+    },
+    {
+      title: '金额',
+      dataIndex: 'amount',
+      key: 'amount',
+      render: (amount, record) => `${amount} ${record.token}`
+    },
+    {
+      title: '接收地址',
+      dataIndex: 'toAddress',
+      key: 'toAddress',
+      render: (address) => `${address.slice(0, 10)}...${address.slice(-8)}`
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      key: 'status',
+      render: (status) => (
+        <Badge 
+          status={status === 'success' ? 'success' : 'error'} 
+          text={status === 'success' ? '成功' : '失败'} 
+        />
+      )
+    },
+    {
+      title: '时间',
+      dataIndex: 'date',
+      key: 'date'
+    },
+    {
+      title: '操作',
+      key: 'action',
+      render: (_, record) => (
+        <Button
+          size="small"
+          icon={<EyeOutlined />}
+          onClick={() => {
+            setSelectedRecord(record);
+            setViewModalVisible(true);
+          }}
+        >
+          查看
+        </Button>
+      )
+    }
+  ];
+
+  // 自定义数据记录表格列定义
+  const customDataColumns = [
+    {
+      title: '数据类型',
+      dataIndex: 'dataType',
+      key: 'dataType'
+    },
+    {
+      title: '数据预览',
+      dataIndex: 'customData',
+      key: 'customData',
+      render: (data) => data.length > 50 ? `${data.slice(0, 50)}...` : data
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      key: 'status',
+      render: (status) => (
+        <Badge 
+          status={status === 'success' ? 'success' : 'error'} 
+          text={status === 'success' ? '成功' : '失败'} 
+        />
+      )
+    },
+    {
+      title: '时间',
+      dataIndex: 'date',
+      key: 'date'
+    },
+    {
+      title: '操作',
+      key: 'action',
+      render: (_, record) => (
+        <Button
+          size="small"
+          icon={<EyeOutlined />}
+          onClick={() => {
+            setSelectedRecord(record);
+            setViewModalVisible(true);
+          }}
+        >
+          查看
+        </Button>
+      )
+    }
+  ];
+
+  return (
+    <Layout style={{ minHeight: '100vh' }}>
+      <Header style={{ padding: '0 24px', background: '#001529' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', height: '100%' }}>
+          <Title level={3} style={{ color: 'white', margin: 0 }}>
+            <WalletOutlined /> Mask Truffle AI
+          </Title>
+          <WalletConnection
+            onConnect={handleWalletConnect}
+            onDisconnect={handleWalletDisconnect}
+            account={account}
+            ethBalance={ethBalance}
+            usdtBalance={usdtBalance}
+            network={network}
+          />
+        </div>
+      </Header>
+
+      <Content style={{ padding: '24px', background: '#f0f2f5' }}>
+        {progressVisible && (
+          <Card style={{ marginBottom: 24 }}>
+            <ProgressBar
+              visible={progressVisible}
+              percent={progressPercent}
+              status={progressStatus}
+            />
+          </Card>
+        )}
+
+        {account && (
+          <Row gutter={24} style={{ marginBottom: 24 }}>
+            <Col span={8}>
+              <Card>
+                <div style={{ textAlign: 'center' }}>
+                  <Title level={4}>ETH 余额</Title>
+                  <Text style={{ fontSize: '24px', color: '#1890ff' }}>
+                    {parseFloat(ethBalance).toFixed(6)}
+                  </Text>
+                </div>
+              </Card>
+            </Col>
+            <Col span={8}>
+              <Card>
+                <div style={{ textAlign: 'center' }}>
+                  <Title level={4}>USDT 余额</Title>
+                  <Text style={{ fontSize: '24px', color: '#52c41a' }}>
+                    {parseFloat(usdtBalance).toFixed(2)}
+                  </Text>
+                </div>
+              </Card>
+            </Col>
+            <Col span={8}>
+              <Card>
+                <div style={{ textAlign: 'center' }}>
+                  <Title level={4}>网络</Title>
+                  <Text style={{ fontSize: '16px' }}>
+                    {network ? `${network.name} (${network.chainId})` : '未连接'}
+                  </Text>
+                </div>
+              </Card>
+            </Col>
+          </Row>
+        )}
+
+        <Tabs defaultActiveKey="eth-transfer">
+          <TabPane tab={<span><SendOutlined />ETH 转账</span>} key="eth-transfer">
+            <Card title="ETH 转账" style={{ marginBottom: 24 }}>
+              <ETHTransferForm />
+            </Card>
+          </TabPane>
+
+          <TabPane tab={<span><SendOutlined />USDT 转账</span>} key="usdt-transfer">
+            <Card title="USDT 转账" style={{ marginBottom: 24 }}>
+              <USDTTransferForm />
+            </Card>
+          </TabPane>
+
+          <TabPane tab={<span><DatabaseOutlined />自定义数据</span>} key="custom-data">
+            <Card title="提交自定义数据到区块链" style={{ marginBottom: 24 }}>
+              <CustomDataForm />
+            </Card>
+          </TabPane>
+
+          <TabPane tab={<span><HistoryOutlined />转账记录</span>} key="transaction-history">
+            <Card title="转账历史记录">
+              <Table
+                columns={transactionColumns}
+                dataSource={transactionRecords}
+                rowKey="id"
+                pagination={{ pageSize: 10 }}
+                scroll={{ x: 800 }}
+              />
+            </Card>
+          </TabPane>
+
+          <TabPane tab={<span><DatabaseOutlined />数据记录</span>} key="data-history">
+            <Card title="自定义数据历史记录">
+              <Table
+                columns={customDataColumns}
+                dataSource={customDataRecords}
+                rowKey="id"
+                pagination={{ pageSize: 10 }}
+                scroll={{ x: 800 }}
+              />
+            </Card>
+          </TabPane>
+        </Tabs>
+
+        {/* 详情查看Modal */}
+        <Modal
+          title="记录详情"
+          open={viewModalVisible}
+          onCancel={() => setViewModalVisible(false)}
+          footer={null}
+          width={800}
+        >
+          {selectedRecord && (
+            <div>
+              <Divider>基本信息</Divider>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Paragraph><strong>类型:</strong> {selectedRecord.token || selectedRecord.dataType}</Paragraph>
+                  <Paragraph><strong>状态:</strong> 
+                    <Badge 
+                      status={selectedRecord.status === 'success' ? 'success' : 'error'} 
+                      text={selectedRecord.status === 'success' ? '成功' : '失败'} 
+                    />
+                  </Paragraph>
+                  <Paragraph><strong>时间:</strong> {selectedRecord.date}</Paragraph>
+                </Col>
+                <Col span={12}>
+                  {selectedRecord.amount && (
+                    <Paragraph><strong>金额:</strong> {selectedRecord.amount} {selectedRecord.token}</Paragraph>
+                  )}
+                  {selectedRecord.toAddress && (
+                    <Paragraph><strong>接收地址:</strong> {selectedRecord.toAddress}</Paragraph>
+                  )}
+                  {selectedRecord.fromAddress && (
+                    <Paragraph><strong>发送地址:</strong> {selectedRecord.fromAddress}</Paragraph>
+                  )}
+                </Col>
+              </Row>
+
+              <Divider>交易信息</Divider>
+              <Paragraph><strong>交易哈希:</strong> {selectedRecord.txHash}</Paragraph>
+              {selectedRecord.gasUsed && (
+                <Paragraph><strong>Gas使用量:</strong> {selectedRecord.gasUsed}</Paragraph>
+              )}
+
+              {selectedRecord.customData && typeof selectedRecord.customData === 'object' && (
+                <>
+                  <Divider>自定义数据</Divider>
+                  {selectedRecord.customData.memo && (
+                    <Paragraph>
+                      <strong>备注:</strong> {selectedRecord.customData.memo}
+                      {selectedRecord.customData.memoIncludedOnChain ? (
+                        <Badge status="success" text="已写入区块链" style={{ marginLeft: 8 }} />
+                      ) : (
+                        <Badge status="warning" text="仅本地存储" style={{ marginLeft: 8 }} />
+                      )}
+                    </Paragraph>
+                  )}
+                  {selectedRecord.customData.isContract !== undefined && (
+                    <Paragraph><strong>目标类型:</strong> {selectedRecord.customData.isContract ? '智能合约' : '普通地址'}</Paragraph>
+                  )}
+                </>
+              )}
+
+              {selectedRecord.customData && typeof selectedRecord.customData === 'string' && (
+                <>
+                  <Divider>存储的数据</Divider>
+                  <Paragraph>
+                    <Text code style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                      {selectedRecord.customData}
+                    </Text>
+                  </Paragraph>
+                </>
+              )}
+            </div>
+          )}
+        </Modal>
+      </Content>
+
+      <Footer style={{ textAlign: 'center', background: '#f0f2f5' }}>
+        <Text type="secondary">
+          Mask Truffle AI ©2024 - 去中心化数据存储与转账平台
+        </Text>
+      </Footer>
+    </Layout>
+  );
+}
+
+export default App;
