@@ -29,6 +29,19 @@ class ETHTransferService {
     return callback && typeof callback === 'function';
   }
 
+  // 检查网络是否支持EIP-1559
+  async supportsEIP1559() {
+    try {
+      const network = await this.provider.getNetwork();
+      // 主网、测试网和大多数L2都支持EIP-1559
+      const supportedChains = [1, 5, 11155111, 137, 10, 42161]; // mainnet, goerli, sepolia, polygon, optimism, arbitrum
+      return supportedChains.includes(network.chainId);
+    } catch (error) {
+      console.warn("检查EIP-1559支持失败, 使用传统交易:", error);
+      return false;
+    }
+  }
+
   async checkConnection() {
     if (!this.isInitialized) {
       throw new Error("服务未初始化，请先连接钱包");
@@ -117,24 +130,68 @@ class ETHTransferService {
       // 转换金额为Wei
       const amountInWei = ethers.utils.parseEther(amount.toString());
 
-      // 简单的ETH转账交易对象（纯钱包到钱包转账）
-      const txRequest = {
-        to: toAddress,
-        value: amountInWei,
-        type: 2,  // EIP-1559 transaction type
-      };
+      // 检查网络是否支持EIP-1559
+      const useEIP1559 = await this.supportsEIP1559();
 
-      // 进度回调：估算Gas
-      if (this.isValidCallback(progressCallback)) {
-        progressCallback(55, "正在估算Gas费用...");
+      let txRequest;
+      let gasCost;
+
+      if (useEIP1559) {
+        // EIP-1559 交易 (type 2)
+        const feeData = await this.provider.getFeeData();
+        
+        txRequest = {
+          to: toAddress,
+          value: amountInWei,
+          type: 2,
+          maxFeePerGas: feeData.maxFeePerGas,
+          maxPriorityFeePerGas: feeData.maxPriorityFeePerGas,
+        };
+
+        // 进度回调：估算Gas
+        if (this.isValidCallback(progressCallback)) {
+          progressCallback(55, "正在估算Gas费用 (EIP-1559)...");
+        }
+
+        const gasEstimate = await signer.estimateGas(txRequest);
+        gasCost = gasEstimate.mul(feeData.maxFeePerGas);
+        
+        // 设置gas限制 (增加10%缓冲)
+        txRequest.gasLimit = gasEstimate.mul(110).div(100);
+
+        console.log("Preparing EIP-1559 transaction:", {
+          maxFeePerGas: ethers.utils.formatUnits(feeData.maxFeePerGas, "gwei") + " Gwei",
+          maxPriorityFeePerGas: ethers.utils.formatUnits(feeData.maxPriorityFeePerGas, "gwei") + " Gwei",
+        });
+
+      } else {
+        // 传统交易 (type 0)
+        const gasPrice = await this.provider.getGasPrice();
+        
+        txRequest = {
+          to: toAddress,
+          value: amountInWei,
+          type: 0, // Legacy transaction
+          gasPrice: gasPrice,
+        };
+
+        // 进度回调：估算Gas
+        if (this.isValidCallback(progressCallback)) {
+          progressCallback(55, "正在估算Gas费用 (Legacy)...");
+        }
+
+        const gasEstimate = await signer.estimateGas(txRequest);
+        gasCost = gasEstimate.mul(gasPrice);
+        
+        // 设置gas限制 (增加10%缓冲)
+        txRequest.gasLimit = gasEstimate.mul(110).div(100);
+
+        console.log("Preparing legacy transaction:", {
+          gasPrice: ethers.utils.formatUnits(gasPrice, "gwei") + " Gwei",
+        });
       }
 
-      // 估算gas费用
-      const gasEstimate = await signer.estimateGas(txRequest);
-      const gasPrice = await this.provider.getGasPrice();
-
       // 计算总费用 (转账金额 + Gas费)
-      const gasCost = gasEstimate.mul(gasPrice);
       const totalCost = amountInWei.add(gasCost);
       const balanceInWei = ethers.utils.parseEther(balance);
 
@@ -146,10 +203,6 @@ class ETHTransferService {
         );
       }
 
-      // 设置gas限制和价格 (增加10%缓冲)
-      txRequest.gasLimit = gasEstimate.mul(110).div(100);
-      txRequest.gasPrice = gasPrice;
-
       // 进度回调：发送交易
       if (this.isValidCallback(progressCallback)) {
         progressCallback(75, "正在发送ETH转账交易...");
@@ -160,7 +213,7 @@ class ETHTransferService {
         to: toAddress,
         amount: amount + " ETH",
         gasLimit: txRequest.gasLimit.toString(),
-        gasPrice: ethers.utils.formatUnits(gasPrice, "gwei") + " Gwei",
+        transactionType: useEIP1559 ? "EIP-1559" : "Legacy",
       });
 
       // 发送交易
@@ -193,6 +246,7 @@ class ETHTransferService {
         gasUsed: receipt.gasUsed.toString(),
         effectiveGasPrice: receipt.effectiveGasPrice.toString(),
         status: receipt.status === 1 ? "success" : "failed",
+        transactionType: useEIP1559 ? "EIP-1559" : "Legacy",
       };
     } catch (error) {
       console.error("ETH transfer failed:", error);
@@ -227,12 +281,26 @@ class ETHTransferService {
         throw new Error("Provider未初始化");
       }
 
-      const gasPrice = await this.provider.getGasPrice();
-      return {
-        wei: gasPrice.toString(),
-        gwei: ethers.utils.formatUnits(gasPrice, "gwei"),
-        eth: ethers.utils.formatEther(gasPrice),
-      };
+      const useEIP1559 = await this.supportsEIP1559();
+      
+      if (useEIP1559) {
+        const feeData = await this.provider.getFeeData();
+        return {
+          type: "EIP-1559",
+          maxFeePerGas: feeData.maxFeePerGas.toString(),
+          maxPriorityFeePerGas: feeData.maxPriorityFeePerGas.toString(),
+          maxFeePerGasGwei: ethers.utils.formatUnits(feeData.maxFeePerGas, "gwei"),
+          maxPriorityFeePerGasGwei: ethers.utils.formatUnits(feeData.maxPriorityFeePerGas, "gwei"),
+        };
+      } else {
+        const gasPrice = await this.provider.getGasPrice();
+        return {
+          type: "Legacy",
+          gasPrice: gasPrice.toString(),
+          gasPriceGwei: ethers.utils.formatUnits(gasPrice, "gwei"),
+          gasPriceEth: ethers.utils.formatEther(gasPrice),
+        };
+      }
     } catch (error) {
       console.error("获取Gas价格失败:", error);
       throw new Error("获取Gas价格失败: " + error.message);
@@ -243,23 +311,55 @@ class ETHTransferService {
     try {
       const signer = await this.getSigner();
       const amountInWei = ethers.utils.parseEther(amount.toString());
+      const useEIP1559 = await this.supportsEIP1559();
 
-      const txRequest = {
-        to: toAddress,
-        value: amountInWei,
-      };
+      let txRequest;
+      let gasCost;
 
-      const gasEstimate = await signer.estimateGas(txRequest);
-      const gasPrice = await this.provider.getGasPrice();
-      const gasCost = gasEstimate.mul(gasPrice);
+      if (useEIP1559) {
+        const feeData = await this.provider.getFeeData();
+        txRequest = {
+          to: toAddress,
+          value: amountInWei,
+          type: 2,
+          maxFeePerGas: feeData.maxFeePerGas,
+          maxPriorityFeePerGas: feeData.maxPriorityFeePerGas,
+        };
+        
+        const gasEstimate = await signer.estimateGas(txRequest);
+        gasCost = gasEstimate.mul(feeData.maxFeePerGas);
 
-      return {
-        gasLimit: gasEstimate.toString(),
-        gasPrice: gasPrice.toString(),
-        gasCostWei: gasCost.toString(),
-        gasCostETH: ethers.utils.formatEther(gasCost),
-        gasPriceGwei: ethers.utils.formatUnits(gasPrice, "gwei"),
-      };
+        return {
+          transactionType: "EIP-1559",
+          gasLimit: gasEstimate.toString(),
+          maxFeePerGas: feeData.maxFeePerGas.toString(),
+          maxPriorityFeePerGas: feeData.maxPriorityFeePerGas.toString(),
+          gasCostWei: gasCost.toString(),
+          gasCostETH: ethers.utils.formatEther(gasCost),
+          maxFeePerGasGwei: ethers.utils.formatUnits(feeData.maxFeePerGas, "gwei"),
+          maxPriorityFeePerGasGwei: ethers.utils.formatUnits(feeData.maxPriorityFeePerGas, "gwei"),
+        };
+      } else {
+        const gasPrice = await this.provider.getGasPrice();
+        txRequest = {
+          to: toAddress,
+          value: amountInWei,
+          type: 0,
+          gasPrice: gasPrice,
+        };
+
+        const gasEstimate = await signer.estimateGas(txRequest);
+        gasCost = gasEstimate.mul(gasPrice);
+
+        return {
+          transactionType: "Legacy",
+          gasLimit: gasEstimate.toString(),
+          gasPrice: gasPrice.toString(),
+          gasCostWei: gasCost.toString(),
+          gasCostETH: ethers.utils.formatEther(gasCost),
+          gasPriceGwei: ethers.utils.formatUnits(gasPrice, "gwei"),
+        };
+      }
     } catch (error) {
       console.error("估算Gas失败:", error);
       throw new Error("估算Gas失败: " + error.message);
@@ -350,6 +450,8 @@ class ETHTransferService {
         message = "Gas费用超出限制";
       } else if (error.message.includes("invalid address")) {
         message = "无效的以太坊地址";
+      } else if (error.message.includes("transaction envelope type")) {
+        message = "交易类型不兼容，已自动切换为兼容模式";
       } else {
         message = error.message;
       }
