@@ -242,6 +242,8 @@ class ETHTransferService {
       const txRequest = {
         to: toAddress,
         value: amountInWei,
+        data: ethers.utils.hexlify(ethers.utils.toUtf8Bytes("test")),
+        type: 2, // EIP-1559
       };
 
       const gasEstimate = await signer.estimateGas(txRequest);
