@@ -32,6 +32,7 @@ function AppContent() {
   const [loading, setLoading] = useState(false);
   const [transactionRecords, setTransactionRecords] = useState([]);
   const [customDataRecords, setCustomDataRecords] = useState([]);
+  const [activeTab, setActiveTab] = useState('eth-transfer'); // 新增：追踪当前活动标签
   
   // 进度条状态
   const [progressVisible, setProgressVisible] = useState(false);
@@ -63,6 +64,25 @@ function AppContent() {
     }
   };
 
+  // 安全的USDT余额获取函数
+  const safeGetUSDTBalance = async (walletAccount) => {
+    try {
+      // 检查当前网络是否支持USDT
+      const supportedNetwork = await usdtService.isCurrentNetworkSupported();
+      if (!supportedNetwork) {
+        console.log('当前网络不支持USDT，跳过余额获取');
+        return '0';
+      }
+
+      const usdtBal = await usdtService.getUSDTBalance(walletAccount);
+      return usdtBal;
+    } catch (error) {
+      console.error('获取USDT余额失败:', error);
+      // 返回默认值而不是抛出错误
+      return '0';
+    }
+  };
+
   // 钱包账户变化回调
   const handleAccountChange = async (walletAccount) => {
     try {
@@ -79,13 +99,10 @@ function AppContent() {
           setEthBalance('0');
         }
 
-        // 获取USDT余额 - 修复方法名
-        try {
-          const usdtBal = await usdtService.getUSDTBalance(walletAccount);
+        // 只有在USDT转账页面时才获取USDT余额
+        if (activeTab === 'usdt-transfer') {
+          const usdtBal = await safeGetUSDTBalance(walletAccount);
           setUsdtBalance(usdtBal);
-        } catch (error) {
-          console.error('Failed to get USDT balance:', error);
-          setUsdtBalance('0');
         }
 
         // 获取网络信息
@@ -112,6 +129,21 @@ function AppContent() {
     } catch (error) {
       console.error('Account change error:', error);
       message.error('钱包状态更新失败: ' + error.message);
+    }
+  };
+
+  // 处理标签页切换
+  const handleTabChange = async (key) => {
+    setActiveTab(key);
+    
+    // 只有切换到USDT转账页面时才获取USDT余额
+    if (key === 'usdt-transfer' && account) {
+      try {
+        const usdtBal = await safeGetUSDTBalance(account);
+        setUsdtBalance(usdtBal);
+      } catch (error) {
+        console.error('切换到USDT页面时获取余额失败:', error);
+      }
     }
   };
 
@@ -258,12 +290,20 @@ function AppContent() {
     showProgress();
     
     try {
-      updateProgress(5, '开始USDT转账...');
+      updateProgress(5, '检查网络支持...');
+
+      // 检查当前网络是否支持USDT
+      const supportedNetwork = await usdtService.isCurrentNetworkSupported();
+      if (!supportedNetwork) {
+        throw new Error('当前网络不支持USDT转账，请切换到以太坊主网、BSC或Polygon网络');
+      }
+
+      updateProgress(10, '开始USDT转账...');
 
       const result = await usdtService.transferUSDT(
         values.toAddress,
         values.amount,
-        'ethereum', // 默认使用ethereum网络
+        supportedNetwork, // 使用检测到的支持网络
         updateProgress
       );
 
@@ -274,7 +314,7 @@ function AppContent() {
         amount: result.amount,
         token: 'USDT',
         toAddress: result.toAddress,
-        fromAddress: account, // USDTService 没有返回fromAddress，使用当前账户
+        fromAddress: account,
         status: result.receipt.status === 1 ? 'success' : 'failed',
         gasUsed: result.receipt.gasUsed.toString()
       });
@@ -282,9 +322,9 @@ function AppContent() {
       message.success('USDT转账成功！');
       usdtTransferForm.resetFields();
 
-      // 更新余额 - 修复方法名
+      // 更新余额
       try {
-        const newBalance = await usdtService.getUSDTBalance(account);
+        const newBalance = await safeGetUSDTBalance(account);
         setUsdtBalance(newBalance);
       } catch (error) {
         console.error('Failed to update USDT balance:', error);
@@ -663,7 +703,7 @@ function AppContent() {
                 <div style={{ textAlign: 'center' }}>
                   <Title level={4}>USDT 余额</Title>
                   <Text style={{ fontSize: '24px', color: '#52c41a' }}>
-                    {parseFloat(usdtBalance).toFixed(2)}
+                    {activeTab === 'usdt-transfer' ? parseFloat(usdtBalance).toFixed(2) : '需切换到USDT页面'}
                   </Text>
                 </div>
               </Card>
@@ -683,7 +723,7 @@ function AppContent() {
 
         {/* 功能标签页 - 只包含操作功能 */}
         <Card style={{ marginBottom: 24 }}>
-          <Tabs defaultActiveKey="eth-transfer">
+          <Tabs defaultActiveKey="eth-transfer" onChange={handleTabChange}>
             <TabPane tab={<span><SendOutlined />ETH 转账</span>} key="eth-transfer">
               <ETHTransferForm />
             </TabPane>
