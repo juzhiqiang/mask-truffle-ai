@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Layout, Menu, Card, Form, Input, InputNumber, Button, Row, Col, message, Tabs, Table, Modal, Badge, Typography, Space, Divider } from 'antd';
 import { SendOutlined, HistoryOutlined, WalletOutlined, DatabaseOutlined, EyeOutlined } from '@ant-design/icons';
 import { Web3ReactProvider } from '@web3-react/core';
@@ -84,7 +84,7 @@ function AppContent() {
   };
 
   // 钱包账户变化回调
-  const handleAccountChange = async (walletAccount) => {
+  const handleAccountChange = useCallback(async (walletAccount) => {
     try {
       if (walletAccount) {
         setAccount(walletAccount);
@@ -130,7 +130,7 @@ function AppContent() {
       console.error('Account change error:', error);
       message.error('钱包状态更新失败: ' + error.message);
     }
-  };
+  }, [activeTab, ethTransferService, usdtService]);
 
   // 处理标签页切换
   const handleTabChange = async (key) => {
@@ -389,6 +389,7 @@ function AppContent() {
         form={ethTransferForm}
         layout="vertical"
         onFinish={handleETHTransfer}
+        disabled={!account}
       >
         <Row gutter={16}>
           <Col span={12}>
@@ -407,7 +408,12 @@ function AppContent() {
                 }
               ]}
             >
-              <Input placeholder="0x..." />
+              <Input 
+                placeholder="0x..." 
+                autoComplete="off"
+                spellCheck={false}
+                style={{ fontFamily: 'monospace' }}
+              />
             </Form.Item>
           </Col>
           <Col span={12}>
@@ -425,6 +431,8 @@ function AppContent() {
                 min={0.001}
                 step={0.001}
                 precision={6}
+                autoComplete="off"
+                controls={false}
               />
             </Form.Item>
           </Col>
@@ -438,6 +446,8 @@ function AppContent() {
           <Input.TextArea
             placeholder="可选的转账备注信息"
             rows={2}
+            autoComplete="off"
+            spellCheck={false}
           />
         </Form.Item>
 
@@ -446,7 +456,7 @@ function AppContent() {
             type="primary"
             htmlType="submit"
             loading={loading}
-            disabled={!account}
+            disabled={!account || loading}
             icon={<SendOutlined />}
           >
             {!account ? '请先连接钱包' : '发送ETH'}
@@ -463,6 +473,7 @@ function AppContent() {
         form={usdtTransferForm}
         layout="vertical"
         onFinish={handleUSDTTransfer}
+        disabled={!account}
       >
         <Row gutter={16}>
           <Col span={12}>
@@ -481,7 +492,12 @@ function AppContent() {
                 }
               ]}
             >
-              <Input placeholder="0x..." />
+              <Input 
+                placeholder="0x..." 
+                autoComplete="off"
+                spellCheck={false}
+                style={{ fontFamily: 'monospace' }}
+              />
             </Form.Item>
           </Col>
           <Col span={12}>
@@ -499,6 +515,8 @@ function AppContent() {
                 min={0.01}
                 step={0.01}
                 precision={2}
+                autoComplete="off"
+                controls={false}
               />
             </Form.Item>
           </Col>
@@ -509,7 +527,7 @@ function AppContent() {
             type="primary"
             htmlType="submit"
             loading={loading}
-            disabled={!account}
+            disabled={!account || loading}
             icon={<SendOutlined />}
           >
             {!account ? '请先连接钱包' : '发送USDT'}
@@ -526,13 +544,18 @@ function AppContent() {
         form={customDataForm}
         layout="vertical"
         onFinish={handleCustomDataSubmit}
+        disabled={!account}
       >
         <Form.Item
           label="数据类型"
           name="dataType"
           rules={[{ required: true, message: '请输入数据类型' }]}
         >
-          <Input placeholder="例如：message、document、log等" />
+          <Input 
+            placeholder="例如：message、document、log等" 
+            autoComplete="off"
+            spellCheck={false}
+          />
         </Form.Item>
 
         <Form.Item
@@ -545,6 +568,8 @@ function AppContent() {
             rows={6}
             showCount
             maxLength={1000}
+            autoComplete="off"
+            spellCheck={false}
           />
         </Form.Item>
 
@@ -553,7 +578,7 @@ function AppContent() {
             type="primary"
             htmlType="submit"
             loading={loading}
-            disabled={!account}
+            disabled={!account || loading}
             icon={<DatabaseOutlined />}
           >
             {!account ? '请先连接钱包' : '提交数据到链上'}

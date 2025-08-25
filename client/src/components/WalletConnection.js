@@ -23,15 +23,20 @@ const WalletConnection = ({ onAccountChange }) => {
   const [connectionError, setConnectionError] = useState('');
   const [balance, setBalance] = useState('0');
   const [copied, setCopied] = useState(false);
+  const [ensName, setEnsName] = useState('');
+  const [ensAvatar, setEnsAvatar] = useState('');
 
   useEffect(() => {
     if (account && active) {
       onAccountChange(account);
       setConnectionError('');
       loadBalance();
+      loadENSData();
     } else if (!active) {
       onAccountChange('');
       setBalance('0');
+      setEnsName('');
+      setEnsAvatar('');
     }
   }, [account, active, onAccountChange, chainId]);
 
@@ -53,6 +58,41 @@ const WalletConnection = ({ onAccountChange }) => {
         console.error('获取余额失败:', error);
         setBalance('0');
       }
+    }
+  };
+
+  const loadENSData = async () => {
+    if (library && account && (chainId === 1 || chainId === 5 || chainId === 11155111)) {
+      try {
+        // 获取ENS名称
+        const name = await library.lookupAddress(account);
+        if (name) {
+          setEnsName(name);
+          // 获取ENS头像
+          try {
+            const resolver = await library.getResolver(name);
+            if (resolver) {
+              const avatar = await resolver.getText('avatar');
+              if (avatar) {
+                setEnsAvatar(avatar);
+              }
+            }
+          } catch (avatarError) {
+            console.log('获取ENS头像失败:', avatarError);
+          }
+        } else {
+          setEnsName('');
+          setEnsAvatar('');
+        }
+      } catch (error) {
+        console.log('获取ENS数据失败:', error);
+        setEnsName('');
+        setEnsAvatar('');
+      }
+    } else {
+      // 非主网或测试网时清空ENS数据
+      setEnsName('');
+      setEnsAvatar('');
     }
   };
 
@@ -95,13 +135,22 @@ const WalletConnection = ({ onAccountChange }) => {
         await new Promise(resolve => setTimeout(resolve, 200));
       }
 
-      // 先尝试请求账户权限
-      await window.ethereum.request({ method: 'eth_requestAccounts' });
+      // 先尝试请求账户权限，使用更短的超时时间
+      const requestPromise = window.ethereum.request({ 
+        method: 'eth_requestAccounts' 
+      });
+      
+      // 添加超时处理，防止无限等待
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('连接超时，请检查MetaMask状态')), 30000);
+      });
+      
+      await Promise.race([requestPromise, timeoutPromise]);
       
       // 然后激活连接器
       await activate(injectedConnector);
       
-      // 等待连接状态更新
+      // 等待连接状态更新，但不阻塞UI
       setTimeout(() => {
         if (active && account) {
           message.success('钱包连接成功');
@@ -121,6 +170,10 @@ const WalletConnection = ({ onAccountChange }) => {
         message.error('连接失败: ' + errorMsg);
       } else if (error.code === -32002) {
         const errorMsg = 'MetaMask已有待处理的连接请求，请在MetaMask中处理';
+        setConnectionError(errorMsg);
+        message.error('连接失败: ' + errorMsg);
+      } else if (error.message?.includes('连接超时')) {
+        const errorMsg = '连接超时，请重试或检查MetaMask状态';
         setConnectionError(errorMsg);
         message.error('连接失败: ' + errorMsg);
       } else {
@@ -198,9 +251,30 @@ const WalletConnection = ({ onAccountChange }) => {
     }
   };
 
+  // 头像信息
   const generateAvatar = (address) => {
     if (!address) return null;
     
+    // 如果有ENS头像，优先使用ENS头像
+    if (ensAvatar) {
+      return (
+        <Avatar 
+          src={ensAvatar} 
+          size={32}
+          onError={(e) => {
+            // 如果ENS头像加载失败，显示默认头像
+            const colors = ['#f56a00', '#7265e6', '#ffbf00', '#00a2ae', '#1890ff'];
+            const index = parseInt(address.slice(2, 4), 16) % colors.length;
+            const color = colors[index];
+            const initial = address.slice(2, 4).toUpperCase();
+            e.target.style.display = 'none';
+            return false;
+          }}
+        />
+      );
+    }
+    
+    // 默认头像逻辑
     const colors = ['#f56a00', '#7265e6', '#ffbf00', '#00a2ae', '#1890ff'];
     const index = parseInt(address.slice(2, 4), 16) % colors.length;
     const color = colors[index];
@@ -214,6 +288,13 @@ const WalletConnection = ({ onAccountChange }) => {
   };
 
   const formatAddress = (address) => `${address.slice(0, 6)}...${address.slice(-4)}`;
+  
+  // 显示ENS名称或格式化地址
+  const getDisplayName = (address) => {
+    return ensName || formatAddress(address);
+  };
+  
+  // 检测MetaMask是否安装
   const isMetaMaskInstalled = () => typeof window.ethereum !== 'undefined';
 
   // 连接成功后的钱包信息展示
@@ -350,9 +431,9 @@ const WalletConnection = ({ onAccountChange }) => {
               <Space>
                 {generateAvatar(account)}
                 <div>
-                  <div style={{ fontSize: '12px', color: '#f3f3f3',lineHeight: '16px' }}>钱包地址</div>
-                  <div style={{ fontSize: '14px', fontWeight: '600', color: '#fff', fontFamily: 'monospace',lineHeight: '16px' }}>
-                    {formatAddress(account)}
+                  <div style={{ fontSize: '12px', color: '#f3f3f3',lineHeight: '16px' }}>{ensName ? 'ENS名称' : '钱包地址'}</div>
+                  <div style={{ fontSize: '14px', fontWeight: '600', color: '#fff', fontFamily: ensName ? 'inherit' : 'monospace',lineHeight: '16px' }}>
+                    {getDisplayName(account)}
                   </div>
                 </div>
               </Space>
@@ -376,6 +457,7 @@ const WalletConnection = ({ onAccountChange }) => {
         {connectionError ? '连接失败' : '连接钱包'}
       </Button>
       
+      {/* 连接钱包弹窗 */}
       <Modal
         title="连接钱包"
         open={isModalVisible}

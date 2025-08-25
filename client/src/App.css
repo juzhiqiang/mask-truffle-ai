@@ -1,4 +1,51 @@
-@import '~antd/dist/reset.css';
+/* 移除可能导致输入问题的重置CSS */
+/* @import '~antd/dist/reset.css'; */
+
+/* 确保输入框可以正常使用 */
+.ant-input, .ant-input-number, .ant-select-selector {
+  pointer-events: auto !important;
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+
+/* 确保表单元素不被禁用 */
+.ant-form-item:not(.ant-form-item-has-error) .ant-input:not([disabled]),
+.ant-form-item:not(.ant-form-item-has-error) .ant-input-number:not([disabled]) input {
+  cursor: text !important;
+}
+
+/* 确保文本区域可编辑 */
+.ant-input {
+  background-color: #fff !important;
+  border: 1px solid #d9d9d9 !important;
+}
+
+.ant-input:focus,
+.ant-input-focused {
+  border-color: #40a9ff !important;
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2) !important;
+  outline: 0 !important;
+}
+
+/* 修复数字输入框 */
+.ant-input-number {
+  width: 100%;
+}
+
+.ant-input-number .ant-input-number-input {
+  pointer-events: auto !important;
+  cursor: text !important;
+}
+
+/* 修复文本域 */
+.ant-input {
+  resize: vertical;
+}
+
+textarea.ant-input {
+  min-height: 32px;
+  line-height: 1.5715;
+}
 
 .App {
   background: #f0f2f5;
