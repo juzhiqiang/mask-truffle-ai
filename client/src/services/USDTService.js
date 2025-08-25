@@ -17,6 +17,13 @@ const USDT_ADDRESSES = {
   polygon: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F', // Polygon
 };
 
+// 网络ID映射
+const CHAIN_ID_TO_NETWORK = {
+  1: 'ethereum',   // Ethereum 主网
+  56: 'bsc',       // BSC 主网
+  137: 'polygon'   // Polygon 主网
+};
+
 class USDTService {
   constructor() {
     this.provider = null;
@@ -55,17 +62,56 @@ class USDTService {
     return this.contracts.get(network);
   }
 
-  async getUSDTBalance(userAddress, network = 'ethereum') {
+  async getUSDTBalance(userAddress, network = null) {
     try {
-      const contract = this.getUSDTContract(network);
-      const balance = await contract.balanceOf(userAddress);
+      // 如果没有指定网络，自动检测当前网络
+      if (!network) {
+        network = await this.isCurrentNetworkSupported();
+        if (!network) {
+          console.warn('当前网络不支持USDT');
+          return '0';
+        }
+      }
+
+      console.log(`正在获取 ${network} 网络上的USDT余额...`);
       
-      // USDT通常使用6位小数
-      const decimals = 6;
-      return ethers.utils.formatUnits(balance, decimals);
+      const contract = this.getUSDTContract(network);
+      
+      // 添加超时处理
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('获取余额超时')), 10000);
+      });
+
+      const balancePromise = contract.balanceOf(userAddress);
+      const balance = await Promise.race([balancePromise, timeoutPromise]);
+      
+      // 获取小数位数，默认为6位（USDT标准）
+      let decimals = 6;
+      try {
+        decimals = await contract.decimals();
+      } catch (error) {
+        console.warn('无法获取小数位数，使用默认值6:', error);
+      }
+
+      const formattedBalance = ethers.utils.formatUnits(balance, decimals);
+      console.log(`USDT余额获取成功: ${formattedBalance} USDT`);
+      
+      return formattedBalance;
     } catch (error) {
       console.error('获取USDT余额失败:', error);
-      throw error;
+      
+      // 根据错误类型提供更详细的信息
+      if (error.code === 'CALL_EXCEPTION') {
+        console.error('智能合约调用异常，可能的原因：');
+        console.error('1. 网络不匹配或不支持');
+        console.error('2. RPC节点问题');
+        console.error('3. 合约地址错误');
+        throw new Error('无法连接到USDT合约，请检查网络设置');
+      } else if (error.message.includes('超时')) {
+        throw new Error('网络请求超时，请稍后重试');
+      } else {
+        throw error;
+      }
     }
   }
 
@@ -94,8 +140,15 @@ class USDTService {
         progressCallback(35, '正在准备转账参数...');
       }
 
-      // 转换金额为合约格式 (6位小数)
-      const decimals = 6;
+      // 获取小数位数
+      let decimals = 6;
+      try {
+        decimals = await contract.decimals();
+      } catch (error) {
+        console.warn('无法获取小数位数，使用默认值6');
+      }
+
+      // 转换金额为合约格式
       const amountInWei = ethers.utils.parseUnits(amount.toString(), decimals);
 
       if (progressCallback) {
@@ -174,17 +227,25 @@ class USDTService {
     return names[network] || network;
   }
 
-  // 检查当前网络是否支持USDT
+  // 检查当前网络是否支持USDT - 增强版
   async isCurrentNetworkSupported() {
     try {
       const network = await this.getCurrentNetwork();
-      const chainIdToNetwork = {
-        1: 'ethereum',   // Ethereum 主网
-        56: 'bsc',       // BSC 主网
-        137: 'polygon'   // Polygon 主网
-      };
+      if (!network) {
+        console.warn('无法获取当前网络信息');
+        return null;
+      }
+
+      const supportedNetwork = CHAIN_ID_TO_NETWORK[network.chainId];
       
-      return chainIdToNetwork[network.chainId] || null;
+      if (supportedNetwork) {
+        console.log(`检测到支持的网络: ${this.getNetworkDisplayName(supportedNetwork)} (${network.chainId})`);
+        return supportedNetwork;
+      } else {
+        console.warn(`不支持的网络: ${network.name} (${network.chainId})`);
+        console.log('支持的网络:', Object.keys(USDT_ADDRESSES));
+        return null;
+      }
     } catch (error) {
       console.error('检查网络支持失败:', error);
       return null;
@@ -195,6 +256,33 @@ class USDTService {
   formatUSDTAmount(amount, decimals = 2) {
     const num = parseFloat(amount);
     return num.toFixed(decimals);
+  }
+
+  // 验证地址格式
+  isValidAddress(address) {
+    try {
+      return ethers.utils.isAddress(address);
+    } catch (error) {
+      return false;
+    }
+  }
+
+  // 获取网络状态信息 - 用于调试
+  async getNetworkStatus() {
+    try {
+      const network = await this.getCurrentNetwork();
+      const supportedNetwork = await this.isCurrentNetworkSupported();
+      
+      return {
+        current: network,
+        supported: supportedNetwork,
+        availableNetworks: this.getSupportedNetworks(),
+        isSupported: !!supportedNetwork
+      };
+    } catch (error) {
+      console.error('获取网络状态失败:', error);
+      return null;
+    }
   }
 }
 
