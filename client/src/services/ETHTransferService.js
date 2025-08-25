@@ -78,175 +78,7 @@ class ETHTransferService {
     }
   }
 
-  // 检查地址是否为合约地址
-  async isContractAddress(address) {
-    try {
-      const code = await this.provider.getCode(address);
-      return code !== "0x";
-    } catch (error) {
-      console.error("检查合约地址失败:", error);
-      return false;
-    }
-  }
-
-  async transferETH(toAddress, amount, memo = "", progressCallback = null) {
-    try {
-      // 进度回调：准备阶段
-      if (progressCallback) {
-        progressCallback(10, "正在获取钱包签名器...");
-      }
-
-      const signer = await this.getSigner();
-      const fromAddress = await signer.getAddress();
-
-      // 进度回调：检查余额
-      if (progressCallback) {
-        progressCallback(20, "正在检查ETH余额...");
-      }
-
-      // 检查余额
-      const balance = await this.getBalance(fromAddress);
-      const balanceInETH = parseFloat(balance);
-      const amountInETH = parseFloat(amount);
-
-      if (balanceInETH < amountInETH) {
-        throw new Error(
-          `ETH余额不足。当前余额: ${balance} ETH, 需要: ${amount} ETH`
-        );
-      }
-
-      // 进度回调：准备交易
-      if (progressCallback) {
-        progressCallback(35, "正在准备转账交易...");
-      }
-
-      // 转换金额为Wei
-      const amountInWei = ethers.utils.parseEther(amount.toString());
-
-      // 准备交易对象 - ETH直接转账支持Input Data
-      const txRequest = {
-        to: toAddress,
-        value: amountInWei,
-        data: ethers.utils.hexlify(ethers.utils.toUtf8Bytes(memo)),
-        type: 2,
-      };
-
-      let memoIncludedOnChain = false;
-
-      // 进度回调：估算Gas
-      if (progressCallback) {
-        progressCallback(50, "正在估算Gas费用...");
-      }
-
-      let gasEstimate, gasPrice;
-      try {
-        // 估算gas费用
-        gasEstimate = await signer.estimateGas(txRequest);
-        gasPrice = await this.provider.getGasPrice();
-
-        // 如果成功估算，说明支持带data的交易
-        if (memo && memo.trim().length > 0) {
-          memoIncludedOnChain = true;
-        }
-      } catch (estimateError) {
-        // 如果估算失败且有备注，直接抛出错误终止转账
-        if (memo && memo.trim().length > 0) {
-          if (
-            estimateError.message.includes("cannot include data") ||
-            estimateError.message.includes(
-              "External transactions to internal accounts cannot include data"
-            ) ||
-            estimateError.code === -32602
-          ) {
-            throw new Error(
-              `当前网络不支持在ETH转账中包含Input Data。为确保备注信息能够上链，请尝试在支持Input Data的网络上进行转账，或者清空备注后重试。`
-            );
-          }
-        }
-        // 其他错误直接抛出
-        throw estimateError;
-      }
-
-      // 计算总费用 (转账金额 + Gas费)
-      const gasCost = gasEstimate.mul(gasPrice);
-      const totalCost = amountInWei.add(gasCost);
-      const balanceInWei = ethers.utils.parseEther(balance);
-
-      if (balanceInWei.lt(totalCost)) {
-        const gasCostInETH = ethers.utils.formatEther(gasCost);
-        const totalCostInETH = ethers.utils.formatEther(totalCost);
-        throw new Error(
-          `余额不足支付Gas费。需要总计: ${totalCostInETH} ETH (转账: ${amount} ETH + Gas: ${gasCostInETH} ETH)`
-        );
-      }
-
-      // 设置gas限制和价格
-      txRequest.gasLimit = gasEstimate.mul(120).div(100); // 增加20%的gas缓冲
-      txRequest.gasPrice = gasPrice;
-
-      // 进度回调：发送交易
-      if (progressCallback) {
-        progressCallback(70, "正在发送ETH转账交易...");
-      }
-
-      console.log("Sending ETH transfer:", {
-        from: fromAddress,
-        to: toAddress,
-        amount: amount + " ETH",
-        memo: memo || "No memo",
-        memoOnChain: memoIncludedOnChain,
-        hasInputData: !!txRequest.data,
-        inputDataSize: txRequest.data
-          ? ethers.utils.hexDataLength(txRequest.data)
-          : 0,
-        gasLimit: txRequest.gasLimit.toString(),
-        gasPrice: ethers.utils.formatUnits(gasPrice, "gwei") + " Gwei",
-      });
-
-      // 发送交易
-      const tx = await signer.sendTransaction(txRequest);
-
-      console.log("ETH transfer transaction sent:", tx.hash);
-
-      // 进度回调：等待确认
-      if (progressCallback) {
-        progressCallback(85, "正在等待区块确认...");
-      }
-
-      // 等待交易确认
-      const receipt = await tx.wait();
-
-      console.log("ETH transfer confirmed:", receipt);
-
-      // 进度回调：完成
-      if (progressCallback) {
-        progressCallback(100, "ETH转账成功！");
-      }
-
-      return {
-        tx,
-        receipt,
-        amount,
-        toAddress,
-        fromAddress,
-        memo,
-        txHash: tx.hash,
-        gasUsed: receipt.gasUsed.toString(),
-        effectiveGasPrice: receipt.effectiveGasPrice.toString(),
-        status: receipt.status === 1 ? "success" : "failed",
-        memoIncludedOnChain,
-      };
-    } catch (error) {
-      console.error("ETH transfer failed:", error);
-      if (progressCallback) {
-        progressCallback(-1, `ETH转账失败: ${error.message}`);
-      }
-      this.handleTransferError(error);
-    }
-  }
-
-  // 简化版转账（不包含备注数据，用于确保兼容性）
-  async transferETHSimple(toAddress, amount, progressCallback = null) {
+  async transferETH(toAddress, amount, progressCallback = null) {
     try {
       // 进度回调：准备阶段
       if (progressCallback) {
@@ -272,26 +104,31 @@ class ETHTransferService {
         );
       }
 
+      // 进度回调：准备交易
+      if (progressCallback) {
+        progressCallback(40, "正在准备转账交易...");
+      }
+
       // 转换金额为Wei
       const amountInWei = ethers.utils.parseEther(amount.toString());
 
-      // 简单的交易对象（不包含data字段）
+      // 简单的ETH转账交易对象（纯钱包到钱包转账）
       const txRequest = {
         to: toAddress,
         value: amountInWei,
-        type: 2,
+        type: 2,  // EIP-1559 transaction type
       };
 
       // 进度回调：估算Gas
       if (progressCallback) {
-        progressCallback(50, "正在估算Gas费用...");
+        progressCallback(55, "正在估算Gas费用...");
       }
 
       // 估算gas费用
       const gasEstimate = await signer.estimateGas(txRequest);
       const gasPrice = await this.provider.getGasPrice();
 
-      // 计算总费用
+      // 计算总费用 (转账金额 + Gas费)
       const gasCost = gasEstimate.mul(gasPrice);
       const totalCost = amountInWei.add(gasCost);
       const balanceInWei = ethers.utils.parseEther(balance);
@@ -304,8 +141,8 @@ class ETHTransferService {
         );
       }
 
-      // 设置gas限制和价格
-      txRequest.gasLimit = gasEstimate.mul(110).div(100); // 增加10%的gas缓冲（更保守）
+      // 设置gas限制和价格 (增加10%缓冲)
+      txRequest.gasLimit = gasEstimate.mul(110).div(100);
       txRequest.gasPrice = gasPrice;
 
       // 进度回调：发送交易
@@ -313,7 +150,7 @@ class ETHTransferService {
         progressCallback(75, "正在发送ETH转账交易...");
       }
 
-      console.log("Sending simple ETH transfer:", {
+      console.log("Sending ETH transfer:", {
         from: fromAddress,
         to: toAddress,
         amount: amount + " ETH",
@@ -397,21 +234,15 @@ class ETHTransferService {
     }
   }
 
-  async estimateTransferGas(toAddress, amount, memo = "") {
+  async estimateTransferGas(toAddress, amount) {
     try {
       const signer = await this.getSigner();
       const amountInWei = ethers.utils.parseEther(amount.toString());
-      const isContract = await this.isContractAddress(toAddress);
 
       const txRequest = {
         to: toAddress,
         value: amountInWei,
       };
-
-      // 只有向合约地址发送时才包含数据
-      if (memo && memo.trim().length > 0 && isContract) {
-        txRequest.data = ethers.utils.hexlify(ethers.utils.toUtf8Bytes(memo));
-      }
 
       const gasEstimate = await signer.estimateGas(txRequest);
       const gasPrice = await this.provider.getGasPrice();
@@ -423,8 +254,6 @@ class ETHTransferService {
         gasCostWei: gasCost.toString(),
         gasCostETH: ethers.utils.formatEther(gasCost),
         gasPriceGwei: ethers.utils.formatUnits(gasPrice, "gwei"),
-        isContract,
-        canIncludeMemo: isContract,
       };
     } catch (error) {
       console.error("估算Gas失败:", error);
@@ -507,18 +336,6 @@ class ETHTransferService {
       message = "交易超时，请重试";
     } else if (error.code === 4001) {
       message = "用户拒绝了交易";
-    } else if (error.code === -32602) {
-      if (
-        error.message.includes("cannot include data") ||
-        error.message.includes(
-          "External transactions to internal accounts cannot include data"
-        )
-      ) {
-        message =
-          "当前网络不支持向普通地址发送带数据的交易，系统将自动重试无数据模式";
-      } else {
-        message = "交易参数错误，已自动使用简化模式重试";
-      }
     } else if (error.message) {
       if (error.message.includes("user rejected")) {
         message = "用户取消了交易";
@@ -526,23 +343,8 @@ class ETHTransferService {
         message = "余额不足";
       } else if (error.message.includes("gas required exceeds allowance")) {
         message = "Gas费用超出限制";
-      } else if (
-        error.message.includes(
-          "External transactions to internal accounts cannot include data"
-        )
-      ) {
-        message =
-          "当前网络（可能为Layer 2或侧链）不支持在EOA转账中包含数据，备注将保存在本地";
-      } else if (error.message.includes("cannot include data")) {
-        message = "当前网络不支持带数据的交易，备注将保存在本地";
       } else if (error.message.includes("invalid address")) {
         message = "无效的以太坊地址";
-      } else if (
-        error.message.includes(
-          "External transactions to internal accounts cannot include data"
-        )
-      ) {
-        message = "当前网络不支持向普通地址发送带数据的交易";
       } else {
         message = error.message;
       }
