@@ -9,7 +9,7 @@ import WalletConnection from './components/WalletConnection';
 import ProgressBar from './components/ProgressBar';
 import ETHTransferService from './services/ETHTransferService';
 import USDTService from './services/USDTService';
-import DataStorageService from './services/DataStorageService';
+import InfuraService from './services/InfuraService';
 import './App.css';
 
 const { Header, Content, Footer } = Layout;
@@ -31,7 +31,6 @@ function AppContent() {
   const [network, setNetwork] = useState(null);
   const [loading, setLoading] = useState(false);
   const [transactionRecords, setTransactionRecords] = useState([]);
-  const [customDataRecords, setCustomDataRecords] = useState([]);
   const [activeTab, setActiveTab] = useState('eth-transfer'); // 新增：追踪当前活动标签
   const [searchText, setSearchText] = useState(''); // 新增：搜索文本
   
@@ -47,12 +46,11 @@ function AppContent() {
   // 表单实例
   const [ethTransferForm] = Form.useForm();
   const [usdtTransferForm] = Form.useForm();
-  const [customDataForm] = Form.useForm();
 
   // 服务实例
   const [ethTransferService] = useState(() => new ETHTransferService());
   const [usdtService] = useState(() => new USDTService());
-  const [dataStorageService] = useState(() => new DataStorageService());
+  const [infuraService] = useState(() => new InfuraService());
 
   // 进度条控制函数
   const showProgress = () => setProgressVisible(true);
@@ -83,32 +81,6 @@ function AppContent() {
       return '0';
     }
   };
-
-  // 加载自定义数据记录 - 使用合约事件日志查询
-  const loadCustomDataRecords = useCallback(async () => {
-    if (!account) return;
-    
-    try {
-      // 从合约事件日志查询当前用户的数据记录
-      const records = await dataStorageService.queryDataByCreator(account);
-      setCustomDataRecords(records);
-      
-      // 同时保存到本地存储作为备份
-      localStorage.setItem('customDataRecords', JSON.stringify(records));
-    } catch (error) {
-      console.error('Failed to load custom data records from contract:', error);
-      
-      // 如果合约查询失败，尝试从本地存储加载
-      try {
-        const stored = localStorage.getItem('customDataRecords');
-        if (stored) {
-          setCustomDataRecords(JSON.parse(stored));
-        }
-      } catch (localError) {
-        console.error('Failed to load from local storage:', localError);
-      }
-    }
-  }, [account, dataStorageService]);
 
   // 钱包账户变化回调
   const handleAccountChange = useCallback(async (walletAccount) => {
@@ -142,7 +114,6 @@ function AppContent() {
 
         // 加载交易记录
         loadTransactionRecords();
-        await loadCustomDataRecords();
 
       } else {
         // 钱包断开连接
@@ -151,13 +122,12 @@ function AppContent() {
         setUsdtBalance('0');
         setNetwork(null);
         setTransactionRecords([]);
-        setCustomDataRecords([]);
       }
     } catch (error) {
       console.error('Account change error:', error);
       message.error('钱包状态更新失败: ' + error.message);
     }
-  }, [activeTab, ethTransferService, usdtService, loadCustomDataRecords]);
+  }, [activeTab, ethTransferService, usdtService]);
 
   // 处理标签页切换
   const handleTabChange = async (key) => {
@@ -174,6 +144,47 @@ function AppContent() {
     }
   };
 
+  // 从链上获取备注信息
+  const fetchOnChainMemo = async (txHash, chainId) => {
+    try {
+      if (!infuraService.validateInfuraConfig()) {
+        console.warn('Infura未配置，无法获取链上数据');
+        return null;
+      }
+
+      const txData = await infuraService.getTransactionWithMemo(txHash, chainId);
+      return txData.memo;
+    } catch (error) {
+      console.error('获取链上备注失败:', error);
+      return null;
+    }
+  };
+
+  // 更新交易记录的链上备注
+  const updateRecordWithOnChainMemo = async (record) => {
+    if (!record.txHash) return record;
+    
+    try {
+      const currentNetwork = await ethTransferService.getCurrentNetwork();
+      const onChainMemo = await fetchOnChainMemo(record.txHash, currentNetwork?.chainId);
+      
+      if (onChainMemo) {
+        return {
+          ...record,
+          onChainMemo,
+          customData: {
+            ...record.customData,
+            onChainMemo
+          }
+        };
+      }
+    } catch (error) {
+      console.error('更新链上备注失败:', error);
+    }
+    
+    return record;
+  };
+
   // 保存交易记录
   const saveTransactionRecord = (record) => {
     const newRecord = {
@@ -188,14 +199,39 @@ function AppContent() {
   };
 
   // 加载交易记录
-  const loadTransactionRecords = () => {
+  const loadTransactionRecords = async () => {
     try {
       const stored = localStorage.getItem('transactionRecords');
       if (stored) {
-        setTransactionRecords(JSON.parse(stored));
+        const records = JSON.parse(stored);
+        
+        // 异步更新包含链上备注的记录
+        const updatedRecords = await Promise.all(
+          records.map(record => updateRecordWithOnChainMemo(record))
+        );
+        
+        setTransactionRecords(updatedRecords);
+        
+        // 如果有更新，保存到localStorage
+        const hasUpdates = updatedRecords.some((record, index) => 
+          record.onChainMemo && record.onChainMemo !== records[index]?.onChainMemo
+        );
+        
+        if (hasUpdates) {
+          localStorage.setItem('transactionRecords', JSON.stringify(updatedRecords));
+        }
       }
     } catch (error) {
       console.error('Failed to load transaction records:', error);
+      // 如果加载失败，尝试加载基本数据
+      try {
+        const stored = localStorage.getItem('transactionRecords');
+        if (stored) {
+          setTransactionRecords(JSON.parse(stored));
+        }
+      } catch (fallbackError) {
+        console.error('Fallback load also failed:', fallbackError);
+      }
     }
   };
 
@@ -210,7 +246,9 @@ function AppContent() {
       record.fromAddress?.toLowerCase().includes(searchLower) ||
       record.txHash?.toLowerCase().includes(searchLower) ||
       record.amount?.toString().includes(searchLower) ||
-      record.status?.toLowerCase().includes(searchLower)
+      record.status?.toLowerCase().includes(searchLower) ||
+      record.customData?.memo?.toLowerCase().includes(searchLower) ||
+      record.onChainMemo?.toLowerCase().includes(searchLower)
     );
   });
 
@@ -233,32 +271,15 @@ function AppContent() {
     try {
       updateProgress(5, '开始ETH转账...');
 
-      // 尝试标准转账（带备注）
-      let result;
-      try {
-        result = await ethTransferService.transferETH(
-          values.toAddress,
-          values.amount,
-          values.memo || '',
-          updateProgress
-        );
-      } catch (error) {
-        // 如果带数据的转账失败，尝试简化转账
-        console.log('Standard transfer failed, trying simple transfer:', error.message);
-        updateProgress(30, '使用简化模式重试...');
-        
-        result = await ethTransferService.transferETHSimple(
-          values.toAddress,
-          values.amount,
-          updateProgress
-        );
-        
-        // 添加简化转账的标记
-        result.memoIncludedOnChain = false;
-        result.memo = values.memo || '';
-      }
+      // 直接进行转账，如果有备注且无法写入Input Data则失败
+      const result = await ethTransferService.transferETH(
+        values.toAddress,
+        values.amount,
+        values.memo || '',
+        updateProgress
+      );
 
-      // 保存交易记录（包含备注，即使未上链）
+      // 保存交易记录
       saveTransactionRecord({
         dataType: 'transfer',
         txHash: result.txHash,
@@ -275,7 +296,7 @@ function AppContent() {
         gasUsed: result.gasUsed
       });
 
-      message.success('ETH转账成功！');
+      message.success('🎉 ETH转账成功！' + (result.memoIncludedOnChain ? '备注已写入区块链' : ''));
       ethTransferForm.resetFields();
 
       // 更新余额
@@ -357,45 +378,6 @@ function AppContent() {
     }
   };
 
-  // 自定义数据提交处理
-  const handleCustomDataSubmit = async (values) => {
-    if (!account) {
-      message.error('请先连接钱包');
-      return;
-    }
-
-    setLoading(true);
-    showProgress();
-    
-    try {
-      updateProgress(10, '开始提交自定义数据...');
-
-      const result = await dataStorageService.storeCustomData(
-        values.dataType,
-        values.customData,
-        updateProgress
-      );
-
-      message.success('自定义数据提交成功！');
-      customDataForm.resetFields();
-
-      // 重新加载合约数据记录
-      try {
-        await loadCustomDataRecords();
-      } catch (loadError) {
-        console.warn('Failed to reload contract data:', loadError);
-      }
-
-    } catch (error) {
-      console.error('自定义数据提交失败:', error);
-      message.error('数据提交失败: ' + error.message);
-      updateProgress(-1, '数据提交失败: ' + error.message);
-    } finally {
-      setLoading(false);
-      setTimeout(hideProgress, 2000);
-    }
-  };
-
   // ETH转账表单组件
   const ETHTransferForm = () => {
     return (
@@ -455,7 +437,7 @@ function AppContent() {
         <Form.Item
           label="备注信息"
           name="memo"
-          extra="备注信息会尝试写入区块链交易数据。如果失败，将保存在本地记录中。"
+          extra="备注信息将写入ETH转账的Input Data字段中。如果当前网络不支持Input Data，转账将会失败。请确保在支持的网络上操作，或清空备注后重试。"
         >
           <Input.TextArea
             placeholder="可选的转账备注信息"
@@ -551,57 +533,6 @@ function AppContent() {
     );
   };
 
-  // 自定义数据表单组件
-  const CustomDataForm = () => {
-    return (
-      <Form
-        form={customDataForm}
-        layout="vertical"
-        onFinish={handleCustomDataSubmit}
-        disabled={!account}
-      >
-        <Form.Item
-          label="数据类型"
-          name="dataType"
-          rules={[{ required: true, message: '请输入数据类型' }]}
-        >
-          <Input 
-            placeholder="例如：message、document、log等" 
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </Form.Item>
-
-        <Form.Item
-          label="自定义数据"
-          name="customData"
-          rules={[{ required: true, message: '请输入要存储的数据' }]}
-        >
-          <Input.TextArea
-            placeholder="输入要存储到区块链的自定义数据..."
-            rows={6}
-            showCount
-            maxLength={1000}
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </Form.Item>
-
-        <Form.Item>
-          <Button
-            type="primary"
-            htmlType="submit"
-            loading={loading}
-            disabled={!account || loading}
-            icon={<DatabaseOutlined />}
-          >
-            {!account ? '请先连接钱包' : '提交数据到链上'}
-          </Button>
-        </Form.Item>
-      </Form>
-    );
-  };
-
   // 交易记录表格列定义
   const transactionColumns = [
     {
@@ -631,67 +562,6 @@ function AppContent() {
           status={status === 'success' ? 'success' : 'error'} 
           text={status === 'success' ? '成功' : '失败'} 
         />
-      )
-    },
-    {
-      title: '时间',
-      dataIndex: 'date',
-      key: 'date'
-    },
-    {
-      title: '操作',
-      key: 'action',
-      render: (_, record) => (
-        <Button
-          size="small"
-          icon={<EyeOutlined />}
-          onClick={() => {
-            setSelectedRecord(record);
-            setViewModalVisible(true);
-          }}
-        >
-          查看
-        </Button>
-      )
-    }
-  ];
-
-  // 自定义数据记录表格列定义
-  const customDataColumns = [
-    {
-      title: 'ID',
-      dataIndex: 'id',
-      key: 'id',
-      width: 60,
-      render: (id) => id ? `#${id}` : '-'
-    },
-    {
-      title: '数据类型',
-      dataIndex: 'dataType',
-      key: 'dataType'
-    },
-    {
-      title: '数据预览',
-      dataIndex: 'customData',
-      key: 'customData',
-      render: (data) => data.length > 50 ? `${data.slice(0, 50)}...` : data
-    },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      key: 'status',
-      render: (status, record) => (
-        <div>
-          <Badge 
-            status={status === 'success' ? 'success' : status === 'partial' ? 'warning' : 'error'} 
-            text={status === 'success' ? '成功' : status === 'partial' ? '部分' : '失败'} 
-          />
-          {record.isActive !== undefined && (
-            <div style={{ fontSize: '12px', color: record.isActive ? '#52c41a' : '#f5222d' }}>
-              {record.isActive ? '活跃' : '已停用'}
-            </div>
-          )}
-        </div>
       )
     },
     {
@@ -784,16 +654,12 @@ function AppContent() {
             <TabPane tab={<span><SendOutlined />USDT 转账</span>} key="usdt-transfer">
               <USDTTransferForm />
             </TabPane>
-
-            <TabPane tab={<span><DatabaseOutlined />自定义数据</span>} key="custom-data">
-              <CustomDataForm />
-            </TabPane>
           </Tabs>
         </Card>
 
         {/* 记录展示区域 - 独立于标签页 */}
         <Row gutter={24}>
-          <Col span={12}>
+          <Col span={24}>
             <Card 
               title={<span><HistoryOutlined /> 转账记录</span>}
               extra={
@@ -818,29 +684,7 @@ function AppContent() {
                 columns={transactionColumns}
                 dataSource={filteredTransactionRecords}
                 rowKey="id"
-                pagination={{ pageSize: 5, size: 'small' }}
-                scroll={{ x: 600 }}
-                size="small"
-              />
-            </Card>
-          </Col>
-          
-          <Col span={12}>
-            <Card 
-              title={<span><DatabaseOutlined /> 数据记录</span>}
-              extra={
-                <Badge 
-                  count={customDataRecords.length} 
-                  showZero 
-                  style={{ backgroundColor: '#1890ff' }} 
-                />
-              }
-            >
-              <Table
-                columns={customDataColumns}
-                dataSource={customDataRecords}
-                rowKey="id"
-                pagination={{ pageSize: 5, size: 'small' }}
+                pagination={{ pageSize: 10, size: 'small' }}
                 scroll={{ x: 600 }}
                 size="small"
               />
@@ -910,15 +754,32 @@ function AppContent() {
 
               {selectedRecord.customData && typeof selectedRecord.customData === 'object' && (
                 <>
-                  <Divider>自定义数据</Divider>
+                  <Divider>备注信息</Divider>
                   {selectedRecord.customData.memo && (
                     <Paragraph>
-                      <strong>备注:</strong> {selectedRecord.customData.memo}
+                      <strong>本地备注:</strong> {selectedRecord.customData.memo}
                       {selectedRecord.customData.memoIncludedOnChain ? (
                         <Badge status="success" text="已写入区块链" style={{ marginLeft: 8 }} />
                       ) : (
                         <Badge status="warning" text="仅本地存储" style={{ marginLeft: 8 }} />
                       )}
+                    </Paragraph>
+                  )}
+                  {selectedRecord.onChainMemo && (
+                    <Paragraph>
+                      <strong>链上备注:</strong> {selectedRecord.onChainMemo}
+                      <Badge status="success" text="从链上读取" style={{ marginLeft: 8 }} />
+                    </Paragraph>
+                  )}
+                  {selectedRecord.customData.onChainMemo && selectedRecord.customData.onChainMemo !== selectedRecord.onChainMemo && (
+                    <Paragraph>
+                      <strong>存储的链上备注:</strong> {selectedRecord.customData.onChainMemo}
+                      <Badge status="success" text="链上数据" style={{ marginLeft: 8 }} />
+                    </Paragraph>
+                  )}
+                  {!selectedRecord.customData.memo && !selectedRecord.onChainMemo && !selectedRecord.customData.onChainMemo && (
+                    <Paragraph>
+                      <Text type="secondary">该交易无备注信息</Text>
                     </Paragraph>
                   )}
                   {selectedRecord.customData.isContract !== undefined && (
