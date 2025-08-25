@@ -24,6 +24,11 @@ class ETHTransferService {
     }
   }
 
+  // 检查是否为有效的回调函数
+  isValidCallback(callback) {
+    return callback && typeof callback === 'function';
+  }
+
   async checkConnection() {
     if (!this.isInitialized) {
       throw new Error("服务未初始化，请先连接钱包");
@@ -81,7 +86,7 @@ class ETHTransferService {
   async transferETH(toAddress, amount, progressCallback = null) {
     try {
       // 进度回调：准备阶段
-      if (progressCallback) {
+      if (this.isValidCallback(progressCallback)) {
         progressCallback(10, "正在获取钱包签名器...");
       }
 
@@ -89,7 +94,7 @@ class ETHTransferService {
       const fromAddress = await signer.getAddress();
 
       // 进度回调：检查余额
-      if (progressCallback) {
+      if (this.isValidCallback(progressCallback)) {
         progressCallback(25, "正在检查ETH余额...");
       }
 
@@ -105,7 +110,7 @@ class ETHTransferService {
       }
 
       // 进度回调：准备交易
-      if (progressCallback) {
+      if (this.isValidCallback(progressCallback)) {
         progressCallback(40, "正在准备转账交易...");
       }
 
@@ -120,7 +125,7 @@ class ETHTransferService {
       };
 
       // 进度回调：估算Gas
-      if (progressCallback) {
+      if (this.isValidCallback(progressCallback)) {
         progressCallback(55, "正在估算Gas费用...");
       }
 
@@ -146,7 +151,7 @@ class ETHTransferService {
       txRequest.gasPrice = gasPrice;
 
       // 进度回调：发送交易
-      if (progressCallback) {
+      if (this.isValidCallback(progressCallback)) {
         progressCallback(75, "正在发送ETH转账交易...");
       }
 
@@ -164,7 +169,7 @@ class ETHTransferService {
       console.log("ETH transfer transaction sent:", tx.hash);
 
       // 进度回调：等待确认
-      if (progressCallback) {
+      if (this.isValidCallback(progressCallback)) {
         progressCallback(90, "正在等待区块确认...");
       }
 
@@ -174,7 +179,7 @@ class ETHTransferService {
       console.log("ETH transfer confirmed:", receipt);
 
       // 进度回调：完成
-      if (progressCallback) {
+      if (this.isValidCallback(progressCallback)) {
         progressCallback(100, "ETH转账成功！");
       }
 
@@ -191,7 +196,7 @@ class ETHTransferService {
       };
     } catch (error) {
       console.error("ETH transfer failed:", error);
-      if (progressCallback) {
+      if (this.isValidCallback(progressCallback)) {
         progressCallback(-1, `ETH转账失败: ${error.message}`);
       }
       this.handleTransferError(error);
@@ -258,102 +263,4 @@ class ETHTransferService {
         gasPriceGwei: ethers.utils.formatUnits(gasPrice, "gwei"),
       };
     } catch (error) {
-      console.error("估算Gas失败:", error);
-      throw new Error("估算Gas失败: " + error.message);
-    }
-  }
-
-  async getTransactionStatus(txHash) {
-    try {
-      if (!this.provider || !txHash) return null;
-
-      const tx = await this.provider.getTransaction(txHash);
-      const receipt = await this.provider.getTransactionReceipt(txHash);
-
-      return {
-        transaction: tx,
-        receipt: receipt,
-        status: receipt
-          ? receipt.status === 1
-            ? "success"
-            : "failed"
-          : "pending",
-        confirmations: receipt ? receipt.confirmations : 0,
-        blockNumber: receipt ? receipt.blockNumber : null,
-        gasUsed: receipt ? receipt.gasUsed.toString() : null,
-      };
-    } catch (error) {
-      console.error("获取交易状态失败:", error);
-      return null;
-    }
-  }
-
-  async waitForTransaction(txHash, confirmations = 1, progressCallback = null) {
-    try {
-      if (!this.provider || !txHash) return null;
-
-      const tx = await this.provider.getTransaction(txHash);
-      if (!tx) throw new Error("交易未找到");
-
-      if (progressCallback) {
-        progressCallback(50, "等待交易被打包...");
-      }
-
-      const receipt = await tx.wait(confirmations);
-
-      if (progressCallback) {
-        progressCallback(100, `交易确认完成 (${confirmations} 个确认)`);
-      }
-
-      return receipt;
-    } catch (error) {
-      if (progressCallback) {
-        progressCallback(-1, `等待确认失败: ${error.message}`);
-      }
-      throw error;
-    }
-  }
-
-  // 验证以太坊地址格式
-  isValidAddress(address) {
-    try {
-      ethers.utils.getAddress(address);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  // 错误处理
-  handleTransferError(error) {
-    let message = "转账失败";
-
-    if (error.code === "UNPREDICTABLE_GAS_LIMIT") {
-      message = "交易可能会失败，请检查接收地址或转账金额";
-    } else if (error.code === "INSUFFICIENT_FUNDS") {
-      message = "余额不足，无法支付转账金额和Gas费用";
-    } else if (error.code === "NETWORK_ERROR") {
-      message = "网络连接错误，请检查网络设置";
-    } else if (error.code === "TIMEOUT") {
-      message = "交易超时，请重试";
-    } else if (error.code === 4001) {
-      message = "用户拒绝了交易";
-    } else if (error.message) {
-      if (error.message.includes("user rejected")) {
-        message = "用户取消了交易";
-      } else if (error.message.includes("insufficient funds")) {
-        message = "余额不足";
-      } else if (error.message.includes("gas required exceeds allowance")) {
-        message = "Gas费用超出限制";
-      } else if (error.message.includes("invalid address")) {
-        message = "无效的以太坊地址";
-      } else {
-        message = error.message;
-      }
-    }
-
-    throw new Error(message);
-  }
-}
-
-export default ETHTransferService;
+      console.error("估
