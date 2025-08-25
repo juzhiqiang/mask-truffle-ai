@@ -33,6 +33,7 @@ function AppContent() {
   const [transactionRecords, setTransactionRecords] = useState([]);
   const [customDataRecords, setCustomDataRecords] = useState([]);
   const [activeTab, setActiveTab] = useState('eth-transfer'); // 新增：追踪当前活动标签
+  const [searchText, setSearchText] = useState(''); // 新增：搜索文本
   
   // 进度条状态
   const [progressVisible, setProgressVisible] = useState(false);
@@ -83,6 +84,32 @@ function AppContent() {
     }
   };
 
+  // 加载自定义数据记录 - 使用合约事件日志查询
+  const loadCustomDataRecords = useCallback(async () => {
+    if (!account) return;
+    
+    try {
+      // 从合约事件日志查询当前用户的数据记录
+      const records = await dataStorageService.queryDataByCreator(account);
+      setCustomDataRecords(records);
+      
+      // 同时保存到本地存储作为备份
+      localStorage.setItem('customDataRecords', JSON.stringify(records));
+    } catch (error) {
+      console.error('Failed to load custom data records from contract:', error);
+      
+      // 如果合约查询失败，尝试从本地存储加载
+      try {
+        const stored = localStorage.getItem('customDataRecords');
+        if (stored) {
+          setCustomDataRecords(JSON.parse(stored));
+        }
+      } catch (localError) {
+        console.error('Failed to load from local storage:', localError);
+      }
+    }
+  }, [account, dataStorageService]);
+
   // 钱包账户变化回调
   const handleAccountChange = useCallback(async (walletAccount) => {
     try {
@@ -115,7 +142,7 @@ function AppContent() {
 
         // 加载交易记录
         loadTransactionRecords();
-        loadCustomDataRecords();
+        await loadCustomDataRecords();
 
       } else {
         // 钱包断开连接
@@ -130,7 +157,7 @@ function AppContent() {
       console.error('Account change error:', error);
       message.error('钱包状态更新失败: ' + error.message);
     }
-  }, [activeTab, ethTransferService, usdtService]);
+  }, [activeTab, ethTransferService, usdtService, loadCustomDataRecords]);
 
   // 处理标签页切换
   const handleTabChange = async (key) => {
@@ -172,35 +199,25 @@ function AppContent() {
     }
   };
 
-  // 保存自定义数据记录
-  const saveCustomDataRecord = (record) => {
-    const newRecord = {
-      ...record,
-      id: Date.now().toString(),
-      timestamp: new Date().toISOString(),
-      date: new Date().toLocaleString()
-    };
-    const updatedRecords = [newRecord, ...customDataRecords];
-    setCustomDataRecords(updatedRecords);
-    localStorage.setItem('customDataRecords', JSON.stringify(updatedRecords));
-  };
-
-  // 加载自定义数据记录
-  const loadCustomDataRecords = () => {
-    try {
-      const stored = localStorage.getItem('customDataRecords');
-      if (stored) {
-        setCustomDataRecords(JSON.parse(stored));
-      }
-    } catch (error) {
-      console.error('Failed to load custom data records:', error);
-    }
-  };
+  // 过滤交易记录
+  const filteredTransactionRecords = transactionRecords.filter(record => {
+    if (!searchText) return true;
+    
+    const searchLower = searchText.toLowerCase();
+    return (
+      record.token?.toLowerCase().includes(searchLower) ||
+      record.toAddress?.toLowerCase().includes(searchLower) ||
+      record.fromAddress?.toLowerCase().includes(searchLower) ||
+      record.txHash?.toLowerCase().includes(searchLower) ||
+      record.amount?.toString().includes(searchLower) ||
+      record.status?.toLowerCase().includes(searchLower)
+    );
+  });
 
   // 组件挂载时加载数据
   useEffect(() => {
     loadTransactionRecords();
-    loadCustomDataRecords();
+    // 移除这里的loadCustomDataRecords调用，因为它现在需要account参数
   }, []);
 
   // ETH转账处理
@@ -359,18 +376,15 @@ function AppContent() {
         updateProgress
       );
 
-      // 保存记录
-      saveCustomDataRecord({
-        dataType: values.dataType,
-        customData: values.customData,
-        txHash: result.txHash,
-        fromAddress: account,
-        status: result.status,
-        gasUsed: result.gasUsed
-      });
-
       message.success('自定义数据提交成功！');
       customDataForm.resetFields();
+
+      // 重新加载合约数据记录
+      try {
+        await loadCustomDataRecords();
+      } catch (loadError) {
+        console.warn('Failed to reload contract data:', loadError);
+      }
 
     } catch (error) {
       console.error('自定义数据提交失败:', error);
@@ -645,6 +659,13 @@ function AppContent() {
   // 自定义数据记录表格列定义
   const customDataColumns = [
     {
+      title: 'ID',
+      dataIndex: 'id',
+      key: 'id',
+      width: 60,
+      render: (id) => id ? `#${id}` : '-'
+    },
+    {
       title: '数据类型',
       dataIndex: 'dataType',
       key: 'dataType'
@@ -659,11 +680,18 @@ function AppContent() {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
-      render: (status) => (
-        <Badge 
-          status={status === 'success' ? 'success' : 'error'} 
-          text={status === 'success' ? '成功' : '失败'} 
-        />
+      render: (status, record) => (
+        <div>
+          <Badge 
+            status={status === 'success' ? 'success' : status === 'partial' ? 'warning' : 'error'} 
+            text={status === 'success' ? '成功' : status === 'partial' ? '部分' : '失败'} 
+          />
+          {record.isActive !== undefined && (
+            <div style={{ fontSize: '12px', color: record.isActive ? '#52c41a' : '#f5222d' }}>
+              {record.isActive ? '活跃' : '已停用'}
+            </div>
+          )}
+        </div>
       )
     },
     {
@@ -770,15 +798,25 @@ function AppContent() {
               title={<span><HistoryOutlined /> 转账记录</span>}
               extra={
                 <Badge 
-                  count={transactionRecords.length} 
+                  count={filteredTransactionRecords.length} 
                   showZero 
                   style={{ backgroundColor: '#52c41a' }} 
                 />
               }
             >
+              <div style={{ marginBottom: 16 }}>
+                <Input.Search
+                  placeholder="搜索交易记录（地址、哈希、金额、状态等）"
+                  value={searchText}
+                  onChange={(e) => setSearchText(e.target.value)}
+                  onSearch={(value) => setSearchText(value)}
+                  allowClear
+                  style={{ width: '100%' }}
+                />
+              </div>
               <Table
                 columns={transactionColumns}
-                dataSource={transactionRecords}
+                dataSource={filteredTransactionRecords}
                 rowKey="id"
                 pagination={{ pageSize: 5, size: 'small' }}
                 scroll={{ x: 600 }}
@@ -847,8 +885,27 @@ function AppContent() {
 
               <Divider>交易信息</Divider>
               <Paragraph><strong>交易哈希:</strong> {selectedRecord.txHash}</Paragraph>
+              {selectedRecord.blockNumber && (
+                <Paragraph><strong>区块号:</strong> {selectedRecord.blockNumber}</Paragraph>
+              )}
               {selectedRecord.gasUsed && (
                 <Paragraph><strong>Gas使用量:</strong> {selectedRecord.gasUsed}</Paragraph>
+              )}
+              {selectedRecord.id && (
+                <Paragraph><strong>合约记录ID:</strong> #{selectedRecord.id}</Paragraph>
+              )}
+              {selectedRecord.creator && (
+                <Paragraph><strong>创建者地址:</strong> {selectedRecord.creator}</Paragraph>
+              )}
+              {selectedRecord.isActive !== undefined && (
+                <Paragraph>
+                  <strong>记录状态:</strong> 
+                  <Badge 
+                    status={selectedRecord.isActive ? 'success' : 'error'} 
+                    text={selectedRecord.isActive ? '活跃' : '已停用'} 
+                    style={{ marginLeft: 8 }}
+                  />
+                </Paragraph>
               )}
 
               {selectedRecord.customData && typeof selectedRecord.customData === 'object' && (

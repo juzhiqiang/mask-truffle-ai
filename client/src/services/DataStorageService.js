@@ -745,6 +745,111 @@ class DataStorageService {
       return null;
     }
   }
+
+  // 修改原有的storeData方法，改为返回更完整的信息
+  async storeCustomData(dataType, content, progressCallback = null) {
+    try {
+      const result = await this.storeData(dataType, content, progressCallback);
+      
+      return {
+        txHash: result.tx.hash,
+        status: result.receipt.status === 1 ? 'success' : 'failed',
+        gasUsed: result.receipt.gasUsed.toString(),
+        blockNumber: result.receipt.blockNumber,
+        dataType,
+        customData: content
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // 通过事件日志查询数据记录
+  async queryDataFromLogs(fromBlock = 'earliest', toBlock = 'latest', filters = {}) {
+    try {
+      if (!this.contract) throw new Error('合约未初始化');
+
+      // 创建事件过滤器
+      let eventFilter = this.contract.filters.DataStored();
+      
+      // 如果指定了创建者地址，添加到过滤器
+      if (filters.creator) {
+        eventFilter = this.contract.filters.DataStored(null, null, filters.creator);
+      }
+
+      // 查询事件日志
+      const events = await this.contract.queryFilter(eventFilter, fromBlock, toBlock);
+      
+      // 处理事件数据
+      const dataRecords = await Promise.all(
+        events.map(async (event) => {
+          const { id, dataType, creator, timestamp } = event.args;
+          
+          try {
+            // 获取完整的数据记录
+            const fullRecord = await this.getDataRecord(id.toNumber());
+            
+            return {
+              id: id.toNumber(),
+              dataType,
+              customData: fullRecord.content,
+              creator,
+              timestamp: timestamp.toNumber(),
+              date: new Date(timestamp.toNumber() * 1000).toLocaleString(),
+              txHash: event.transactionHash,
+              blockNumber: event.blockNumber,
+              isActive: fullRecord.isActive,
+              status: 'success'
+            };
+          } catch (error) {
+            console.warn(`Failed to get full record for ID ${id.toNumber()}:`, error);
+            return {
+              id: id.toNumber(),
+              dataType,
+              customData: '无法获取数据内容',
+              creator,
+              timestamp: timestamp.toNumber(),
+              date: new Date(timestamp.toNumber() * 1000).toLocaleString(),
+              txHash: event.transactionHash,
+              blockNumber: event.blockNumber,
+              isActive: false,
+              status: 'partial'
+            };
+          }
+        })
+      );
+
+      // 按时间戳降序排列（最新的在前）
+      return dataRecords
+        .filter(record => record !== null)
+        .sort((a, b) => b.timestamp - a.timestamp);
+
+    } catch (error) {
+      console.error('Query data from logs failed:', error);
+      throw new Error('查询事件日志失败: ' + error.message);
+    }
+  }
+
+  // 根据创建者地址查询数据记录
+  async queryDataByCreator(creatorAddress, fromBlock = 'earliest', toBlock = 'latest') {
+    return this.queryDataFromLogs(fromBlock, toBlock, { creator: creatorAddress });
+  }
+
+  // 查询最近的数据记录
+  async queryRecentData(limit = 10) {
+    try {
+      const currentBlock = await this.provider.getBlockNumber();
+      const fromBlock = Math.max(0, currentBlock - 10000); // 查询最近10000个区块
+      
+      const allRecords = await this.queryDataFromLogs(fromBlock, 'latest');
+      
+      // 返回限制数量的记录
+      return allRecords.slice(0, limit);
+    } catch (error) {
+      console.error('Query recent data failed:', error);
+      throw new Error('查询最近数据失败: ' + error.message);
+    }
+  }
 }
 
 export default DataStorageService;
