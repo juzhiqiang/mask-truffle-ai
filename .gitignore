@@ -33,6 +33,8 @@ build/
 ehthumbs.db
 Thumbs.db
 
+*.lock
+
 # Logs
 logs
 *.log
