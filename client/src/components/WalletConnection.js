@@ -13,7 +13,7 @@ const NETWORKS = {
   1: { name: 'Ethereum 主网', shortName: 'ETH 主网', symbol: 'ETH', color: '#627eea', blockExplorer: 'https://etherscan.io' },
   5: { name: 'Goerli 测试网', shortName: 'Goerli', symbol: 'GoerliETH', color: '#f6c343', blockExplorer: 'https://goerli.etherscan.io' },
   11155111: { name: 'Sepolia 测试网', shortName: 'Sepolia', symbol: 'SepoliaETH', color: '#ff6b6b', blockExplorer: 'https://sepolia.etherscan.io' },
-  1337: { name: '本地开发链', shortName: '本地链', symbol: 'LocalETH', color: '#95de64', blockExplorer: '' }
+  1337: { name: '本地开发链', shortName: '本地链', symbol: 'LocalETH', color: '#95de64', blockExplorer: 'http://127.0.0.1:7545' }
 };
 
 const WalletConnection = ({ onAccountChange }) => {
