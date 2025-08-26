@@ -96,7 +96,37 @@ class ETHTransferService {
     }
   }
 
-  async transferETH(toAddress, amount, progressCallback = null) {
+  // 编码备注信息为input data
+  encodeMemoToInputData(memo) {
+    if (!memo || memo.trim() === "") {
+      return "0x"; // 空数据
+    }
+    
+    try {
+      // 将UTF-8字符串转换为十六进制
+      return ethers.utils.hexlify(ethers.utils.toUtf8Bytes(memo.trim()));
+    } catch (error) {
+      console.warn("编码备注信息失败:", error);
+      return "0x";
+    }
+  }
+
+  // 从input data解码备注信息
+  decodeMemoFromInputData(inputData) {
+    if (!inputData || inputData === "0x" || inputData === "0x0") {
+      return "";
+    }
+    
+    try {
+      // 将十六进制转换为UTF-8字符串
+      return ethers.utils.toUtf8String(inputData);
+    } catch (error) {
+      console.warn("解码备注信息失败:", error);
+      return "";
+    }
+  }
+
+  async transferETH(toAddress, amount, memo = "", progressCallback = null) {
     try {
       // 进度回调：准备阶段
       if (this.isValidCallback(progressCallback)) {
@@ -130,6 +160,9 @@ class ETHTransferService {
       // 转换金额为Wei
       const amountInWei = ethers.utils.parseEther(amount.toString());
 
+      // 编码备注信息
+      const inputData = this.encodeMemoToInputData(memo);
+
       // 检查网络是否支持EIP-1559
       const useEIP1559 = await this.supportsEIP1559();
 
@@ -143,6 +176,7 @@ class ETHTransferService {
         txRequest = {
           to: toAddress,
           value: amountInWei,
+          data: inputData, // 包含备注信息的input data
           type: 2,
           maxFeePerGas: feeData.maxFeePerGas,
           maxPriorityFeePerGas: feeData.maxPriorityFeePerGas,
@@ -159,9 +193,11 @@ class ETHTransferService {
         // 设置gas限制 (增加10%缓冲)
         txRequest.gasLimit = gasEstimate.mul(110).div(100);
 
-        console.log("Preparing EIP-1559 transaction:", {
+        console.log("Preparing EIP-1559 transaction with memo:", {
           maxFeePerGas: ethers.utils.formatUnits(feeData.maxFeePerGas, "gwei") + " Gwei",
           maxPriorityFeePerGas: ethers.utils.formatUnits(feeData.maxPriorityFeePerGas, "gwei") + " Gwei",
+          inputDataLength: ethers.utils.hexDataLength(inputData),
+          memo: memo || "No memo"
         });
 
       } else {
@@ -171,6 +207,7 @@ class ETHTransferService {
         txRequest = {
           to: toAddress,
           value: amountInWei,
+          data: inputData, // 包含备注信息的input data
           type: 0, // Legacy transaction
           gasPrice: gasPrice,
         };
@@ -186,8 +223,10 @@ class ETHTransferService {
         // 设置gas限制 (增加10%缓冲)
         txRequest.gasLimit = gasEstimate.mul(110).div(100);
 
-        console.log("Preparing legacy transaction:", {
+        console.log("Preparing legacy transaction with memo:", {
           gasPrice: ethers.utils.formatUnits(gasPrice, "gwei") + " Gwei",
+          inputDataLength: ethers.utils.hexDataLength(inputData),
+          memo: memo || "No memo"
         });
       }
 
@@ -205,18 +244,21 @@ class ETHTransferService {
 
       // 进度回调：发送交易
       if (this.isValidCallback(progressCallback)) {
-        progressCallback(75, "正在发送ETH转账交易...");
+        progressCallback(75, "正在发送ETH转账交易，等待钱包签名...");
       }
 
-      console.log("Sending ETH transfer:", {
+      console.log("Sending ETH transfer with input data:", {
         from: fromAddress,
         to: toAddress,
         amount: amount + " ETH",
+        memo: memo || "No memo",
+        inputData: inputData,
+        inputDataSize: ethers.utils.hexDataLength(inputData) + " bytes",
         gasLimit: txRequest.gasLimit.toString(),
         transactionType: useEIP1559 ? "EIP-1559" : "Legacy",
       });
 
-      // 发送交易
+      // 发送交易 - 这里会调起钱包签名
       const tx = await signer.sendTransaction(txRequest);
 
       console.log("ETH transfer transaction sent:", tx.hash);
@@ -242,11 +284,14 @@ class ETHTransferService {
         amount,
         toAddress,
         fromAddress,
+        memo,
+        inputData,
         txHash: tx.hash,
         gasUsed: receipt.gasUsed.toString(),
         effectiveGasPrice: receipt.effectiveGasPrice.toString(),
         status: receipt.status === 1 ? "success" : "failed",
         transactionType: useEIP1559 ? "EIP-1559" : "Legacy",
+        memoIncludedOnChain: memo && memo.trim() !== "",
       };
     } catch (error) {
       console.error("ETH transfer failed:", error);
@@ -254,6 +299,77 @@ class ETHTransferService {
         progressCallback(-1, `ETH转账失败: ${error.message}`);
       }
       this.handleTransferError(error);
+    }
+  }
+
+  // 从区块链读取交易的备注信息
+  async getTransactionMemo(txHash) {
+    try {
+      if (!this.provider || !txHash) return "";
+
+      const tx = await this.provider.getTransaction(txHash);
+      if (!tx || !tx.data) {
+        return "";
+      }
+
+      return this.decodeMemoFromInputData(tx.data);
+    } catch (error) {
+      console.error("读取交易备注失败:", error);
+      return "";
+    }
+  }
+
+  // 获取地址的转账历史（包含备注信息）
+  async getTransactionHistory(address, startBlock = 0, endBlock = "latest") {
+    try {
+      if (!this.provider) {
+        throw new Error("Provider未初始化");
+      }
+
+      // 获取最新区块号
+      const latestBlock = endBlock === "latest" ? await this.provider.getBlockNumber() : endBlock;
+      const fromBlock = Math.max(startBlock, latestBlock - 10000); // 限制查询范围避免超时
+
+      console.log(`查询地址 ${address} 从区块 ${fromBlock} 到 ${latestBlock} 的交易历史`);
+
+      const history = [];
+      
+      // 查询最近的区块
+      for (let blockNumber = latestBlock; blockNumber >= fromBlock; blockNumber--) {
+        try {
+          const block = await this.provider.getBlockWithTransactions(blockNumber);
+          
+          for (const tx of block.transactions) {
+            // 检查是否与目标地址相关
+            if (tx.from?.toLowerCase() === address.toLowerCase() || 
+                tx.to?.toLowerCase() === address.toLowerCase()) {
+              
+              const receipt = await this.provider.getTransactionReceipt(tx.hash);
+              const memo = this.decodeMemoFromInputData(tx.data);
+              
+              history.push({
+                hash: tx.hash,
+                from: tx.from,
+                to: tx.to,
+                value: ethers.utils.formatEther(tx.value || "0"),
+                gasUsed: receipt.gasUsed.toString(),
+                blockNumber: tx.blockNumber,
+                timestamp: block.timestamp,
+                memo: memo,
+                status: receipt.status === 1 ? "success" : "failed",
+                hasInputData: tx.data && tx.data !== "0x",
+              });
+            }
+          }
+        } catch (blockError) {
+          console.warn(`获取区块 ${blockNumber} 失败:`, blockError);
+        }
+      }
+
+      return history.sort((a, b) => b.blockNumber - a.blockNumber); // 按区块号降序排列
+    } catch (error) {
+      console.error("获取交易历史失败:", error);
+      throw new Error("获取交易历史失败: " + error.message);
     }
   }
 
@@ -307,10 +423,11 @@ class ETHTransferService {
     }
   }
 
-  async estimateTransferGas(toAddress, amount) {
+  async estimateTransferGas(toAddress, amount, memo = "") {
     try {
       const signer = await this.getSigner();
       const amountInWei = ethers.utils.parseEther(amount.toString());
+      const inputData = this.encodeMemoToInputData(memo);
       const useEIP1559 = await this.supportsEIP1559();
 
       let txRequest;
@@ -321,6 +438,7 @@ class ETHTransferService {
         txRequest = {
           to: toAddress,
           value: amountInWei,
+          data: inputData,
           type: 2,
           maxFeePerGas: feeData.maxFeePerGas,
           maxPriorityFeePerGas: feeData.maxPriorityFeePerGas,
@@ -338,12 +456,15 @@ class ETHTransferService {
           gasCostETH: ethers.utils.formatEther(gasCost),
           maxFeePerGasGwei: ethers.utils.formatUnits(feeData.maxFeePerGas, "gwei"),
           maxPriorityFeePerGasGwei: ethers.utils.formatUnits(feeData.maxPriorityFeePerGas, "gwei"),
+          inputDataSize: ethers.utils.hexDataLength(inputData) + " bytes",
+          hasMemo: memo && memo.trim() !== "",
         };
       } else {
         const gasPrice = await this.provider.getGasPrice();
         txRequest = {
           to: toAddress,
           value: amountInWei,
+          data: inputData,
           type: 0,
           gasPrice: gasPrice,
         };
@@ -358,6 +479,8 @@ class ETHTransferService {
           gasCostWei: gasCost.toString(),
           gasCostETH: ethers.utils.formatEther(gasCost),
           gasPriceGwei: ethers.utils.formatUnits(gasPrice, "gwei"),
+          inputDataSize: ethers.utils.hexDataLength(inputData) + " bytes",
+          hasMemo: memo && memo.trim() !== "",
         };
       }
     } catch (error) {
@@ -372,10 +495,12 @@ class ETHTransferService {
 
       const tx = await this.provider.getTransaction(txHash);
       const receipt = await this.provider.getTransactionReceipt(txHash);
+      const memo = tx ? this.decodeMemoFromInputData(tx.data) : "";
 
       return {
         transaction: tx,
         receipt: receipt,
+        memo: memo,
         status: receipt
           ? receipt.status === 1
             ? "success"
@@ -384,6 +509,7 @@ class ETHTransferService {
         confirmations: receipt ? receipt.confirmations : 0,
         blockNumber: receipt ? receipt.blockNumber : null,
         gasUsed: receipt ? receipt.gasUsed.toString() : null,
+        hasInputData: tx && tx.data && tx.data !== "0x",
       };
     } catch (error) {
       console.error("获取交易状态失败:", error);
