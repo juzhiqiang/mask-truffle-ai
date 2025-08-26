@@ -16,7 +16,9 @@
     "web-vitals": "^2.1.4",
     "axios": "^1.4.0",
     "antd": "^5.6.1",
-    "@ant-design/icons": "^5.1.4"
+    "@ant-design/icons": "^5.1.4",
+    "graphql-request": "^6.1.0",
+    "graphql": "^16.8.1"
   },
   "scripts": {
     "start": "react-scripts start",

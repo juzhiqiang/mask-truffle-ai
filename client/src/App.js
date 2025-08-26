@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Layout, Menu, Card, Form, Input, InputNumber, Button, Row, Col, message, Tabs, Table, Modal, Badge, Typography, Space, Divider, Select } from 'antd';
-import { SendOutlined, HistoryOutlined, WalletOutlined, DatabaseOutlined, EyeOutlined, FileTextOutlined } from '@ant-design/icons';
+import { Layout, Menu, Card, Form, Input, InputNumber, Button, Row, Col, message, Tabs, Table, Modal, Badge, Typography, Space, Divider, Select, Switch, Alert } from 'antd';
+import { SendOutlined, HistoryOutlined, WalletOutlined, DatabaseOutlined, EyeOutlined, FileTextOutlined, CloudDownloadOutlined, ReloadOutlined } from '@ant-design/icons';
 import { Web3ReactProvider } from '@web3-react/core';
 import { ethers } from 'ethers';
 
@@ -11,6 +11,7 @@ import ETHTransferService from './services/ETHTransferService';
 import USDTService from './services/USDTService';
 import InfuraService from './services/InfuraService';
 import LogChainService from './services/LogChainService';
+import TheGraphService from './services/TheGraphService';
 import './App.css';
 
 const { Header, Content, Footer } = Layout;
@@ -35,6 +36,12 @@ function AppContent() {
   const [activeTab, setActiveTab] = useState('eth-transfer'); // 新增：追踪当前活动标签
   const [searchText, setSearchText] = useState(''); // 新增：搜索文本
   
+  // The Graph 相关状态
+  const [graphDataEnabled, setGraphDataEnabled] = useState(false);
+  const [graphDataLoading, setGraphDataLoading] = useState(false);
+  const [graphRecords, setGraphRecords] = useState([]);
+  const [graphHealthStatus, setGraphHealthStatus] = useState(null);
+  
   // 进度条状态
   const [progressVisible, setProgressVisible] = useState(false);
   const [progressPercent, setProgressPercent] = useState(0);
@@ -55,6 +62,7 @@ function AppContent() {
   const [usdtService] = useState(() => new USDTService());
   const [infuraService] = useState(() => new InfuraService());
   const [logChainService] = useState(() => new LogChainService());
+  const [theGraphService] = useState(() => new TheGraphService());
 
   // 进度条控制函数
   const showProgress = () => setProgressVisible(true);
@@ -115,10 +123,15 @@ function AppContent() {
           setUsdtBalance(usdtBal);
         }
 
-        // 获取网络信息
+        // 获取网络信息并初始化The Graph
         try {
           const networkInfo = await ethTransferService.getCurrentNetwork();
           setNetwork(networkInfo);
+          
+          // 初始化The Graph服务
+          if (networkInfo && networkInfo.name) {
+            await initTheGraphService(networkInfo.name);
+          }
         } catch (error) {
           console.error('Failed to get network info:', error);
         }
@@ -155,6 +168,92 @@ function AppContent() {
       } catch (error) {
         console.error('切换到USDT页面时获取余额失败:', error);
       }
+    }
+  };
+
+  // The Graph 功能函数
+  // 初始化The Graph服务
+  const initTheGraphService = async (networkName) => {
+    try {
+      const success = theGraphService.setNetwork(networkName);
+      if (success) {
+        const healthStatus = await theGraphService.healthCheck();
+        setGraphHealthStatus(healthStatus);
+        console.log('The Graph service initialized:', healthStatus);
+        
+        if (healthStatus.status === 'healthy') {
+          setGraphDataEnabled(true);
+          // 如果有用户账户，自动加载数据
+          if (account) {
+            await loadGraphData();
+          }
+        }
+      } else {
+        setGraphDataEnabled(false);
+        setGraphHealthStatus({ status: 'not_supported', message: `Network ${networkName} not supported` });
+      }
+    } catch (error) {
+      console.error('Failed to initialize The Graph service:', error);
+      setGraphDataEnabled(false);
+      setGraphHealthStatus({ status: 'error', message: error.message });
+    }
+  };
+
+  // 从The Graph加载数据
+  const loadGraphData = async () => {
+    if (!graphDataEnabled || !account) return;
+
+    setGraphDataLoading(true);
+    try {
+      // 获取用户的链上数据
+      const userData = await theGraphService.getDataByCreator(account, 50);
+      console.log('Loaded Graph data:', userData);
+      
+      // 转换为应用内的记录格式
+      const formattedRecords = userData.map(data => ({
+        id: data.id,
+        dataType: 'chaindata',
+        token: data.dataType || 'DATA',
+        amount: `Log ${data.logId}`,
+        toAddress: 'Chain Storage',
+        fromAddress: data.creator,
+        txHash: data.txHash,
+        blockNumber: data.blockNumber,
+        status: 'success',
+        date: data.date,
+        timestamp: data.timestamp,
+        onChainMemo: data.content,
+        customData: {
+          logId: data.logId,
+          dataType: data.dataType,
+          content: data.content,
+          dataHash: data.dataHash,
+          source: 'thegraph'
+        }
+      }));
+
+      setGraphRecords(formattedRecords);
+    } catch (error) {
+      console.error('Failed to load Graph data:', error);
+      message.error('加载链上数据失败: ' + error.message);
+    } finally {
+      setGraphDataLoading(false);
+    }
+  };
+
+  // 刷新The Graph数据
+  const refreshGraphData = async () => {
+    await loadGraphData();
+    message.success('链上数据已刷新');
+  };
+
+  // 切换The Graph数据显示
+  const handleGraphDataToggle = async (enabled) => {
+    setGraphDataEnabled(enabled);
+    if (enabled && account) {
+      await loadGraphData();
+    } else {
+      setGraphRecords([]);
     }
   };
 
@@ -267,22 +366,39 @@ function AppContent() {
     setTransactionRecords([]);
   };
 
-  // 过滤交易记录
-  const filteredTransactionRecords = transactionRecords.filter(record => {
-    if (!searchText) return true;
+  // 过滤交易记录 - 合并本地记录和The Graph数据
+  const filteredTransactionRecords = React.useMemo(() => {
+    // 合并本地记录和Graph记录
+    const allRecords = [...transactionRecords];
+    if (graphDataEnabled) {
+      allRecords.push(...graphRecords);
+    }
+    
+    // 按时间戳排序（最新的在前）
+    allRecords.sort((a, b) => {
+      const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+      const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+      return timeB - timeA;
+    });
+    
+    if (!searchText) return allRecords;
     
     const searchLower = searchText.toLowerCase();
-    return (
-      record.token?.toLowerCase().includes(searchLower) ||
-      record.toAddress?.toLowerCase().includes(searchLower) ||
-      record.fromAddress?.toLowerCase().includes(searchLower) ||
-      record.txHash?.toLowerCase().includes(searchLower) ||
-      record.amount?.toString().includes(searchLower) ||
-      record.status?.toLowerCase().includes(searchLower) ||
-      record.customData?.memo?.toLowerCase().includes(searchLower) ||
-      record.onChainMemo?.toLowerCase().includes(searchLower)
-    );
-  });
+    return allRecords.filter(record => {
+      return (
+        record.token?.toLowerCase().includes(searchLower) ||
+        record.toAddress?.toLowerCase().includes(searchLower) ||
+        record.fromAddress?.toLowerCase().includes(searchLower) ||
+        record.txHash?.toLowerCase().includes(searchLower) ||
+        record.amount?.toString().includes(searchLower) ||
+        record.status?.toLowerCase().includes(searchLower) ||
+        record.customData?.memo?.toLowerCase().includes(searchLower) ||
+        record.onChainMemo?.toLowerCase().includes(searchLower) ||
+        record.customData?.content?.toLowerCase().includes(searchLower) ||
+        record.customData?.dataType?.toLowerCase().includes(searchLower)
+      );
+    });
+  }, [transactionRecords, graphRecords, searchText, graphDataEnabled]);
 
   // 组件挂载时加载数据
   useEffect(() => {
@@ -731,30 +847,59 @@ function AppContent() {
       title: '类型',
       dataIndex: 'token',
       key: 'token',
-      render: (token) => <Badge color={token === 'ETH' ? 'blue' : 'green'} text={token} />
+      render: (token, record) => {
+        let color = 'blue';
+        let text = token;
+        
+        if (record.dataType === 'chaindata') {
+          color = 'purple';
+          text = record.customData?.dataType || 'DATA';
+        } else if (token === 'ETH') {
+          color = 'blue';
+        } else if (token === 'USDT') {
+          color = 'green';
+        }
+        
+        return <Badge color={color} text={text} />;
+      }
     },
     {
-      title: '金额',
+      title: '金额/数据',
       dataIndex: 'amount',
       key: 'amount',
-      render: (amount, record) => `${amount} ${record.token}`
+      render: (amount, record) => {
+        if (record.dataType === 'chaindata') {
+          return <span style={{ color: '#722ed1' }}>链上数据 #{record.customData?.logId}</span>;
+        }
+        return `${amount} ${record.token}`;
+      }
     },
     {
-      title: '接收地址',
+      title: '目标地址',
       dataIndex: 'toAddress',
       key: 'toAddress',
-      render: (address) => address ? `${address.slice(0, 10)}...${address.slice(-8)}` : '-'
+      render: (address, record) => {
+        if (record.dataType === 'chaindata') {
+          return <span style={{ color: '#722ed1' }}>区块链存储</span>;
+        }
+        return address ? `${address.slice(0, 10)}...${address.slice(-8)}` : '-';
+      }
     },
     {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
-      render: (status) => (
-        <Badge 
-          status={status === 'success' ? 'success' : 'error'} 
-          text={status === 'success' ? '成功' : '失败'} 
-        />
-      )
+      render: (status, record) => {
+        if (record.customData?.source === 'thegraph') {
+          return <Badge status="processing" text="链上数据" />;
+        }
+        return (
+          <Badge 
+            status={status === 'success' ? 'success' : 'error'} 
+            text={status === 'success' ? '成功' : '失败'} 
+          />
+        );
+      }
     },
     {
       title: '时间',
@@ -814,16 +959,66 @@ function AppContent() {
             <Card 
               title={<span><HistoryOutlined /> 转账记录</span>}
               extra={
-                <Badge 
-                  count={filteredTransactionRecords.length} 
-                  showZero 
-                  style={{ backgroundColor: '#52c41a' }} 
-                />
+                <Space>
+                  <Badge 
+                    count={filteredTransactionRecords.length} 
+                    showZero 
+                    style={{ backgroundColor: '#52c41a' }} 
+                  />
+                  {graphHealthStatus && (
+                    <Button
+                      size="small"
+                      icon={<ReloadOutlined />}
+                      loading={graphDataLoading}
+                      onClick={refreshGraphData}
+                      disabled={!graphDataEnabled}
+                    >
+                      刷新链上数据
+                    </Button>
+                  )}
+                </Space>
               }
             >
+              {/* The Graph 数据控制区域 */}
+              {graphHealthStatus && (
+                <div style={{ marginBottom: 16 }}>
+                  <Alert
+                    message={
+                      <Space>
+                        <CloudDownloadOutlined />
+                        <span>The Graph 数据读取</span>
+                        <Switch
+                          size="small"
+                          checked={graphDataEnabled}
+                          onChange={handleGraphDataToggle}
+                          loading={graphDataLoading}
+                        />
+                        {graphHealthStatus.status === 'healthy' && (
+                          <Badge status="success" text="服务正常" />
+                        )}
+                        {graphHealthStatus.status === 'not_supported' && (
+                          <Badge status="warning" text="当前网络不支持" />
+                        )}
+                        {graphHealthStatus.status === 'error' && (
+                          <Badge status="error" text="服务异常" />
+                        )}
+                      </Space>
+                    }
+                    type={graphHealthStatus.status === 'healthy' ? 'success' : 'warning'}
+                    showIcon
+                    style={{ marginBottom: 8 }}
+                  />
+                  {graphDataEnabled && graphRecords.length > 0 && (
+                    <div style={{ fontSize: '12px', color: '#666', marginBottom: 8 }}>
+                      已加载 {graphRecords.length} 条链上数据记录
+                    </div>
+                  )}
+                </div>
+              )}
+              
               <div style={{ marginBottom: 16 }}>
                 <Input.Search
-                  placeholder="搜索交易记录（地址、哈希、金额、状态等）"
+                  placeholder="搜索交易记录（地址、哈希、金额、状态、链上数据等）"
                   value={searchText}
                   onChange={(e) => setSearchText(e.target.value)}
                   onSearch={(value) => setSearchText(value)}
@@ -834,10 +1029,11 @@ function AppContent() {
               <Table
                 columns={transactionColumns}
                 dataSource={filteredTransactionRecords}
-                rowKey="id"
+                rowKey={(record) => record.id || record.txHash || Math.random()}
                 pagination={{ pageSize: 10, size: 'small' }}
                 scroll={{ x: 600 }}
                 size="small"
+                loading={graphDataLoading}
               />
             </Card>
           </Col>
@@ -913,6 +1109,37 @@ function AppContent() {
                 </Paragraph>
               )}
 
+              {/* 链上数据特殊显示 */}
+              {selectedRecord.dataType === 'chaindata' && selectedRecord.customData && (
+                <>
+                  <Divider>链上数据信息</Divider>
+                  <Row gutter={16}>
+                    <Col span={12}>
+                      <Paragraph><strong>数据ID:</strong> #{selectedRecord.customData.logId}</Paragraph>
+                      <Paragraph><strong>数据类型:</strong> {selectedRecord.customData.dataType}</Paragraph>
+                      <Paragraph><strong>数据哈希:</strong> 
+                        <Text code style={{ fontSize: '11px', wordBreak: 'break-all' }}>
+                          {selectedRecord.customData.dataHash}
+                        </Text>
+                      </Paragraph>
+                    </Col>
+                    <Col span={12}>
+                      <Paragraph><strong>创建者:</strong> {selectedRecord.customData?.creator || selectedRecord.fromAddress}</Paragraph>
+                      <Paragraph><strong>数据源:</strong> 
+                        <Badge status="processing" text="The Graph" style={{ marginLeft: 8 }} />
+                      </Paragraph>
+                    </Col>
+                  </Row>
+                  <Paragraph>
+                    <strong>链上数据内容:</strong>
+                    <br />
+                    <Text code style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: '12px' }}>
+                      {selectedRecord.customData.content}
+                    </Text>
+                  </Paragraph>
+                </>
+              )}
+              
               {/* 转账记录只显示链上备注，不显示本地备注 */}
               {selectedRecord.dataType === 'transfer' && selectedRecord.onChainMemo && (
                 <>

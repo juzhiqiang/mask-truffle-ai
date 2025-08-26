@@ -1,14 +1,13 @@
 import { ethers } from "ethers";
 
-// 日志链上存储合约ABI
-const LOG_CONTRACT_ABI = [
+// DataLogContract合约ABI
+const DATA_LOG_CONTRACT_ABI = [
   {
     "inputs": [
-      {"internalType": "string", "name": "_logType", "type": "string"},
-      {"internalType": "string", "name": "_logData", "type": "string"},
-      {"internalType": "uint256", "name": "_timestamp", "type": "uint256"}
+      {"internalType": "string", "name": "dataType", "type": "string"},
+      {"internalType": "string", "name": "content", "type": "string"}
     ],
-    "name": "storeLog",
+    "name": "storeData",
     "outputs": [
       {"internalType": "uint256", "name": "logId", "type": "uint256"}
     ],
@@ -17,23 +16,77 @@ const LOG_CONTRACT_ABI = [
   },
   {
     "inputs": [
-      {"internalType": "uint256", "name": "_logId", "type": "uint256"}
+      {"internalType": "string", "name": "jsonData", "type": "string"}
     ],
-    "name": "getLog",
+    "name": "storeJSON",
     "outputs": [
-      {"internalType": "address", "name": "creator", "type": "address"},
-      {"internalType": "string", "name": "logType", "type": "string"},
-      {"internalType": "string", "name": "logData", "type": "string"},
-      {"internalType": "uint256", "name": "timestamp", "type": "uint256"}
+      {"internalType": "uint256", "name": "", "type": "uint256"}
+    ],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {"internalType": "string", "name": "logData", "type": "string"}
+    ],
+    "name": "storeLogData",
+    "outputs": [
+      {"internalType": "uint256", "name": "", "type": "uint256"}
+    ],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {"internalType": "string", "name": "transactionData", "type": "string"}
+    ],
+    "name": "storeTransactionData",
+    "outputs": [
+      {"internalType": "uint256", "name": "", "type": "uint256"}
+    ],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {"internalType": "string", "name": "dataType", "type": "string"},
+      {"internalType": "string[]", "name": "contents", "type": "string[]"}
+    ],
+    "name": "storeBatchData",
+    "outputs": [
+      {"internalType": "uint256[]", "name": "logIds", "type": "uint256[]"}
+    ],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {"internalType": "uint256", "name": "logId", "type": "uint256"}
+    ],
+    "name": "getLogData",
+    "outputs": [
+      {
+        "components": [
+          {"internalType": "uint256", "name": "logId", "type": "uint256"},
+          {"internalType": "address", "name": "creator", "type": "address"},
+          {"internalType": "string", "name": "dataType", "type": "string"},
+          {"internalType": "string", "name": "content", "type": "string"},
+          {"internalType": "uint256", "name": "timestamp", "type": "uint256"},
+          {"internalType": "bytes32", "name": "dataHash", "type": "bytes32"}
+        ],
+        "internalType": "struct DataLogContract.DataLog",
+        "name": "",
+        "type": "tuple"
+      }
     ],
     "stateMutability": "view",
     "type": "function"
   },
   {
     "inputs": [
-      {"internalType": "address", "name": "_creator", "type": "address"}
+      {"internalType": "address", "name": "user", "type": "address"}
     ],
-    "name": "getLogsByCreator",
+    "name": "getUserLogIds",
     "outputs": [
       {"internalType": "uint256[]", "name": "", "type": "uint256[]"}
     ],
@@ -41,20 +94,79 @@ const LOG_CONTRACT_ABI = [
     "type": "function"
   },
   {
+    "inputs": [
+      {"internalType": "string", "name": "dataType", "type": "string"}
+    ],
+    "name": "getLogIdsByType",
+    "outputs": [
+      {"internalType": "uint256[]", "name": "", "type": "uint256[]"}
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {"internalType": "uint256", "name": "offset", "type": "uint256"},
+      {"internalType": "uint256", "name": "limit", "type": "uint256"}
+    ],
+    "name": "getLogsPaginated",
+    "outputs": [
+      {
+        "components": [
+          {"internalType": "uint256", "name": "logId", "type": "uint256"},
+          {"internalType": "address", "name": "creator", "type": "address"},
+          {"internalType": "string", "name": "dataType", "type": "string"},
+          {"internalType": "string", "name": "content", "type": "string"},
+          {"internalType": "uint256", "name": "timestamp", "type": "uint256"},
+          {"internalType": "bytes32", "name": "dataHash", "type": "bytes32"}
+        ],
+        "internalType": "struct DataLogContract.DataLog[]",
+        "name": "",
+        "type": "tuple[]"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "getStats",
+    "outputs": [
+      {"internalType": "uint256", "name": "totalLogs", "type": "uint256"},
+      {"internalType": "uint256", "name": "totalUsers", "type": "uint256"},
+      {"internalType": "address", "name": "contractAddress", "type": "address"}
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
     "anonymous": false,
     "inputs": [
-      {"indexed": true, "internalType": "address", "name": "creator", "type": "address"},
       {"indexed": true, "internalType": "uint256", "name": "logId", "type": "uint256"},
-      {"indexed": false, "internalType": "string", "name": "logType", "type": "string"},
+      {"indexed": true, "internalType": "address", "name": "creator", "type": "address"},
+      {"indexed": true, "internalType": "string", "name": "dataType", "type": "string"},
+      {"indexed": false, "internalType": "string", "name": "content", "type": "string"},
+      {"indexed": false, "internalType": "uint256", "name": "timestamp", "type": "uint256"},
+      {"indexed": false, "internalType": "bytes32", "name": "dataHash", "type": "bytes32"}
+    ],
+    "name": "DataStored",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {"indexed": false, "internalType": "uint256[]", "name": "logIds", "type": "uint256[]"},
+      {"indexed": true, "internalType": "address", "name": "creator", "type": "address"},
+      {"indexed": true, "internalType": "string", "name": "dataType", "type": "string"},
       {"indexed": false, "internalType": "uint256", "name": "timestamp", "type": "uint256"}
     ],
-    "name": "LogStored",
+    "name": "BatchDataStored",
     "type": "event"
   }
 ];
 
-// 不同网络的合约地址
-const LOG_CONTRACT_ADDRESSES = {
+// 不同网络的DataLogContract合约地址
+const DATA_LOG_CONTRACT_ADDRESSES = {
   // 以太坊主网
   'ethereum': '0x0000000000000000000000000000000000000000', // 待部署
   // 以太坊测试网
@@ -158,62 +270,68 @@ class LogChainService {
     }
   }
 
-  // 获取日志合约实例
-  async getLogContract() {
+  // 获取数据日志合约实例
+  async getDataLogContract() {
     try {
       const network = await this.getCurrentNetwork();
       if (!network) {
         throw new Error('无法获取网络信息');
       }
 
-      const contractAddress = LOG_CONTRACT_ADDRESSES[network.name];
+      const contractAddress = DATA_LOG_CONTRACT_ADDRESSES[network.name];
       if (!contractAddress || contractAddress === '0x0000000000000000000000000000000000000000') {
-        throw new Error(`当前网络 ${network.displayName} 暂不支持日志合约功能`);
+        throw new Error(`当前网络 ${network.displayName} 暂不支持数据日志合约功能`);
       }
 
       if (!this.contract || this.contract.address !== contractAddress) {
-        this.contract = new ethers.Contract(contractAddress, LOG_CONTRACT_ABI, this.signer || this.provider);
+        this.contract = new ethers.Contract(contractAddress, DATA_LOG_CONTRACT_ABI, this.signer || this.provider);
       }
 
       return this.contract;
     } catch (error) {
-      console.error('获取日志合约失败:', error);
+      console.error('获取数据日志合约失败:', error);
       throw error;
     }
   }
 
   // 上传日志数据到区块链合约
-  async uploadLogToChain(logData, logType = 'info', progressCallback = null) {
+  async uploadLogToChain(logData, logType = 'log', progressCallback = null) {
     try {
       await this.checkConnection();
       
       if (this.isValidCallback(progressCallback)) {
-        progressCallback(10, '准备连接日志合约...');
+        progressCallback(10, '准备连接数据日志合约...');
       }
 
       // 获取合约实例
-      const contract = await this.getLogContract();
+      const contract = await this.getDataLogContract();
       const contractWithSigner = contract.connect(this.signer);
 
       if (this.isValidCallback(progressCallback)) {
-        progressCallback(30, '构建日志交易...');
+        progressCallback(30, '构建数据上链交易...');
       }
 
-      // 创建时间戳
-      const timestamp = Math.floor(Date.now() / 1000);
-
-      // 估算Gas费用
-      let gasEstimate;
+      // 根据不同的数据类型选择不同的方法
+      let tx, gasEstimate;
+      
       try {
-        gasEstimate = await contractWithSigner.estimateGas.storeLog(logType, logData, timestamp);
+        // 根据logType选择合适的合约方法
+        if (logType === 'json') {
+          gasEstimate = await contractWithSigner.estimateGas.storeJSON(logData);
+        } else if (logType === 'transaction') {
+          gasEstimate = await contractWithSigner.estimateGas.storeTransactionData(logData);
+        } else {
+          // 默认使用通用的storeData方法
+          gasEstimate = await contractWithSigner.estimateGas.storeData(logType, logData);
+        }
         gasEstimate = gasEstimate.mul(120).div(100); // 增加20%的Gas余量
       } catch (gasError) {
         console.warn('Gas估算失败，使用默认值:', gasError);
-        gasEstimate = ethers.BigNumber.from('200000'); // 默认20万Gas
+        gasEstimate = ethers.BigNumber.from('300000'); // 默认30万Gas
       }
 
       if (this.isValidCallback(progressCallback)) {
-        progressCallback(50, '发送日志上链交易...');
+        progressCallback(50, '发送数据上链交易...');
       }
 
       // 构建交易选项
@@ -230,8 +348,14 @@ class LogChainService {
         txOptions.gasPrice = gasPrice;
       }
 
-      // 调用合约存储日志
-      const tx = await contractWithSigner.storeLog(logType, logData, timestamp, txOptions);
+      // 调用对应的合约方法
+      if (logType === 'json') {
+        tx = await contractWithSigner.storeJSON(logData, txOptions);
+      } else if (logType === 'transaction') {
+        tx = await contractWithSigner.storeTransactionData(logData, txOptions);
+      } else {
+        tx = await contractWithSigner.storeData(logType, logData, txOptions);
+      }
       
       if (this.isValidCallback(progressCallback)) {
         progressCallback(80, '等待交易确认...');
@@ -247,14 +371,14 @@ class LogChainService {
       // 解析事件获取日志ID
       let logId = null;
       if (receipt.events && receipt.events.length > 0) {
-        const logEvent = receipt.events.find(event => event.event === 'LogStored');
-        if (logEvent && logEvent.args) {
-          logId = logEvent.args.logId?.toString();
+        const dataStoredEvent = receipt.events.find(event => event.event === 'DataStored');
+        if (dataStoredEvent && dataStoredEvent.args) {
+          logId = dataStoredEvent.args.logId?.toString();
         }
       }
 
       if (this.isValidCallback(progressCallback)) {
-        progressCallback(100, '日志上链成功！');
+        progressCallback(100, '数据上链成功！');
       }
 
       return {
@@ -270,15 +394,15 @@ class LogChainService {
       };
 
     } catch (error) {
-      console.error('日志上链失败:', error);
+      console.error('数据上链失败:', error);
       if (this.isValidCallback(progressCallback)) {
-        progressCallback(-1, `日志上链失败: ${error.message}`);
+        progressCallback(-1, `数据上链失败: ${error.message}`);
       }
       
       // 提供更友好的错误信息
       let friendlyMessage = error.message;
       if (error.message.includes('当前网络') && error.message.includes('暂不支持')) {
-        friendlyMessage = '当前网络暂不支持日志合约功能，请切换到支持的网络';
+        friendlyMessage = '当前网络暂不支持数据日志合约功能，请切换到支持的网络';
       } else if (error.message.includes('user rejected')) {
         friendlyMessage = '用户取消了交易';
       } else if (error.message.includes('insufficient funds')) {
@@ -292,41 +416,145 @@ class LogChainService {
   // 从合约读取日志数据
   async getLogFromChain(logId) {
     try {
-      const contract = await this.getLogContract();
-      const logData = await contract.getLog(logId);
+      const contract = await this.getDataLogContract();
+      const logData = await contract.getLogData(logId);
       
       return {
-        creator: logData[0],
-        logType: logData[1],
-        logData: logData[2],
-        timestamp: logData[3].toNumber()
+        logId: logData.logId.toString(),
+        creator: logData.creator,
+        dataType: logData.dataType,
+        content: logData.content,
+        timestamp: logData.timestamp.toNumber(),
+        dataHash: logData.dataHash
       };
     } catch (error) {
-      console.error('读取链上日志失败:', error);
-      throw new Error(`读取日志失败: ${error.message}`);
+      console.error('读取链上数据失败:', error);
+      throw new Error(`读取数据失败: ${error.message}`);
     }
   }
 
   // 获取用户的所有日志ID
   async getUserLogs(userAddress) {
     try {
-      const contract = await this.getLogContract();
-      const logIds = await contract.getLogsByCreator(userAddress);
+      const contract = await this.getDataLogContract();
+      const logIds = await contract.getUserLogIds(userAddress);
       
       return logIds.map(id => id.toString());
     } catch (error) {
-      console.error('获取用户日志列表失败:', error);
-      throw new Error(`获取日志列表失败: ${error.message}`);
+      console.error('获取用户数据列表失败:', error);
+      throw new Error(`获取数据列表失败: ${error.message}`);
     }
   }
 
-  // 检查当前网络是否支持日志合约
+  // 获取指定类型的所有日志ID
+  async getLogsByType(dataType) {
+    try {
+      const contract = await this.getDataLogContract();
+      const logIds = await contract.getLogIdsByType(dataType);
+      
+      return logIds.map(id => id.toString());
+    } catch (error) {
+      console.error('获取指定类型数据失败:', error);
+      throw new Error(`获取数据失败: ${error.message}`);
+    }
+  }
+
+  // 分页获取链上数据
+  async getPaginatedLogs(offset = 0, limit = 10) {
+    try {
+      const contract = await this.getDataLogContract();
+      const logs = await contract.getLogsPaginated(offset, limit);
+      
+      return logs.map(log => ({
+        logId: log.logId.toString(),
+        creator: log.creator,
+        dataType: log.dataType,
+        content: log.content,
+        timestamp: log.timestamp.toNumber(),
+        dataHash: log.dataHash,
+        date: new Date(log.timestamp.toNumber() * 1000).toLocaleString()
+      }));
+    } catch (error) {
+      console.error('分页获取数据失败:', error);
+      throw new Error(`获取数据失败: ${error.message}`);
+    }
+  }
+
+  // 批量上传数据
+  async uploadBatchData(dataType, contents, progressCallback = null) {
+    try {
+      await this.checkConnection();
+      
+      if (this.isValidCallback(progressCallback)) {
+        progressCallback(10, '准备批量上传数据...');
+      }
+
+      const contract = await this.getDataLogContract();
+      const contractWithSigner = contract.connect(this.signer);
+
+      // 估算Gas费用
+      let gasEstimate;
+      try {
+        gasEstimate = await contractWithSigner.estimateGas.storeBatchData(dataType, contents);
+        gasEstimate = gasEstimate.mul(120).div(100);
+      } catch (gasError) {
+        console.warn('Gas估算失败，使用默认值:', gasError);
+        gasEstimate = ethers.BigNumber.from('500000');
+      }
+
+      if (this.isValidCallback(progressCallback)) {
+        progressCallback(50, '发送批量上传交易...');
+      }
+
+      // 构建交易选项
+      const txOptions = { gasLimit: gasEstimate };
+      
+      const supportsEIP1559 = await this.supportsEIP1559();
+      if (supportsEIP1559) {
+        const feeData = await this.provider.getFeeData();
+        txOptions.maxFeePerGas = feeData.maxFeePerGas;
+        txOptions.maxPriorityFeePerGas = feeData.maxPriorityFeePerGas;
+      } else {
+        const gasPrice = await this.provider.getGasPrice();
+        txOptions.gasPrice = gasPrice;
+      }
+
+      const tx = await contractWithSigner.storeBatchData(dataType, contents, txOptions);
+      
+      if (this.isValidCallback(progressCallback)) {
+        progressCallback(80, '等待交易确认...');
+      }
+
+      const receipt = await tx.wait();
+
+      if (this.isValidCallback(progressCallback)) {
+        progressCallback(100, '批量上传成功！');
+      }
+
+      return {
+        txHash: receipt.transactionHash,
+        blockNumber: receipt.blockNumber,
+        gasUsed: receipt.gasUsed?.toString(),
+        status: receipt.status === 1 ? 'success' : 'failed',
+        contractAddress: contract.address
+      };
+
+    } catch (error) {
+      console.error('批量上传失败:', error);
+      if (this.isValidCallback(progressCallback)) {
+        progressCallback(-1, `批量上传失败: ${error.message}`);
+      }
+      throw new Error(error.message);
+    }
+  }
+
+  // 检查当前网络是否支持数据日志合约
   async isNetworkSupported() {
     try {
       const network = await this.getCurrentNetwork();
       if (!network) return false;
       
-      const contractAddress = LOG_CONTRACT_ADDRESSES[network.name];
+      const contractAddress = DATA_LOG_CONTRACT_ADDRESSES[network.name];
       return contractAddress && contractAddress !== '0x0000000000000000000000000000000000000000';
     } catch (error) {
       console.error('检查网络支持失败:', error);
@@ -336,12 +564,29 @@ class LogChainService {
 
   // 获取支持的网络列表
   getSupportedNetworks() {
-    return Object.keys(LOG_CONTRACT_ADDRESSES)
-      .filter(network => LOG_CONTRACT_ADDRESSES[network] !== '0x0000000000000000000000000000000000000000')
+    return Object.keys(DATA_LOG_CONTRACT_ADDRESSES)
+      .filter(network => DATA_LOG_CONTRACT_ADDRESSES[network] !== '0x0000000000000000000000000000000000000000')
       .map(network => ({
         name: network,
-        contractAddress: LOG_CONTRACT_ADDRESSES[network]
+        contractAddress: DATA_LOG_CONTRACT_ADDRESSES[network]
       }));
+  }
+
+  // 获取合约统计信息
+  async getContractStats() {
+    try {
+      const contract = await this.getDataLogContract();
+      const stats = await contract.getStats();
+      
+      return {
+        totalLogs: stats.totalLogs.toString(),
+        totalUsers: stats.totalUsers.toString(),
+        contractAddress: stats.contractAddress
+      };
+    } catch (error) {
+      console.error('获取合约统计信息失败:', error);
+      throw new Error(`获取统计信息失败: ${error.message}`);
+    }
   }
 }
 
