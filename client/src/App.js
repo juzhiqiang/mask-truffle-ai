@@ -115,6 +115,9 @@ function AppContent() {
         // 加载交易记录
         loadTransactionRecords();
 
+        // 获取当前钱包最新的2条链上交易记录
+        fetchLatestOnChainTransactions(walletAccount);
+
       } else {
         // 钱包断开连接
         setAccount(null);
@@ -165,10 +168,12 @@ function AppContent() {
     if (!record.txHash) return record;
     
     try {
+      console.log('正在获取交易的链上数据:', record.txHash);
       const currentNetwork = await ethTransferService.getCurrentNetwork();
       const onChainMemo = await fetchOnChainMemo(record.txHash, currentNetwork?.chainId);
       
       if (onChainMemo) {
+        console.log('获取到链上备注:', onChainMemo);
         return {
           ...record,
           onChainMemo,
@@ -177,16 +182,19 @@ function AppContent() {
             onChainMemo
           }
         };
+      } else {
+        console.log('没有找到链上备注:', record.txHash);
       }
     } catch (error) {
-      console.error('更新链上备注失败:', error);
+      console.error('更新链上备注失败:', record.txHash, error);
     }
     
     return record;
   };
 
-  // 保存交易记录
+  // 保存交易记录（仅保存到状态）
   const saveTransactionRecord = (record) => {
+    console.log('保存新的交易记录:', record);
     const newRecord = {
       ...record,
       id: Date.now().toString(),
@@ -194,45 +202,58 @@ function AppContent() {
       date: new Date().toLocaleString()
     };
     const updatedRecords = [newRecord, ...transactionRecords];
+    console.log('更新后的记录总数:', updatedRecords.length);
     setTransactionRecords(updatedRecords);
-    localStorage.setItem('transactionRecords', JSON.stringify(updatedRecords));
   };
 
-  // 加载交易记录
-  const loadTransactionRecords = async () => {
+  // 从链上获取当前钱包最新的2条交易记录
+  const fetchLatestOnChainTransactions = async (walletAddress) => {
+    if (!walletAddress) {
+      console.log('没有钱包地址，跳过链上交易获取');
+      return;
+    }
+
     try {
-      const stored = localStorage.getItem('transactionRecords');
-      if (stored) {
-        const records = JSON.parse(stored);
+      console.log('开始获取钱包最新交易记录:', walletAddress);
+      
+      // 获取最新的链上交易记录
+      const latestTransactions = await ethTransferService.getLatestTransactions(walletAddress, 2);
+      
+      if (latestTransactions && latestTransactions.length > 0) {
+        console.log(`获取到 ${latestTransactions.length} 条最新交易记录`);
         
-        // 异步更新包含链上备注的记录
-        const updatedRecords = await Promise.all(
-          records.map(record => updateRecordWithOnChainMemo(record))
-        );
-        
-        setTransactionRecords(updatedRecords);
-        
-        // 如果有更新，保存到localStorage
-        const hasUpdates = updatedRecords.some((record, index) => 
-          record.onChainMemo && record.onChainMemo !== records[index]?.onChainMemo
-        );
-        
-        if (hasUpdates) {
-          localStorage.setItem('transactionRecords', JSON.stringify(updatedRecords));
-        }
+        // 转换为应用内的记录格式
+        const formattedRecords = latestTransactions.map(tx => ({
+          dataType: 'transfer',
+          txHash: tx.hash,
+          amount: tx.value,
+          token: tx.token || 'ETH',
+          toAddress: tx.to,
+          fromAddress: tx.from,
+          inputData: tx.inputData || '0x',
+          blockNumber: tx.blockNumber,
+          status: tx.status === 1 ? 'success' : 'failed',
+          gasUsed: tx.gasUsed?.toString(),
+          onChainMemo: tx.memo,
+          id: tx.hash,
+          timestamp: new Date(tx.timestamp * 1000).toISOString(),
+          date: new Date(tx.timestamp * 1000).toLocaleString()
+        }));
+
+        setTransactionRecords(formattedRecords);
+        console.log('链上交易记录已更新到状态中');
+      } else {
+        console.log('没有找到最新的交易记录');
       }
     } catch (error) {
-      console.error('Failed to load transaction records:', error);
-      // 如果加载失败，尝试加载基本数据
-      try {
-        const stored = localStorage.getItem('transactionRecords');
-        if (stored) {
-          setTransactionRecords(JSON.parse(stored));
-        }
-      } catch (fallbackError) {
-        console.error('Fallback load also failed:', fallbackError);
-      }
+      console.error('获取链上交易记录失败:', error);
     }
+  };
+
+  // 初始化时不加载本地缓存数据
+  const loadTransactionRecords = async () => {
+    console.log('初始化交易记录状态（不从本地缓存加载）');
+    setTransactionRecords([]);
   };
 
   // 过滤交易记录
@@ -287,6 +308,8 @@ function AppContent() {
         token: 'ETH',
         toAddress: result.toAddress,
         fromAddress: result.fromAddress,
+        inputData: result.inputData || '0x',
+        blockNumber: result.blockNumber,
         customData: { 
           memo: values.memo || '',
           memoIncludedOnChain: result.memoIncludedOnChain || false,
@@ -353,6 +376,8 @@ function AppContent() {
         token: 'USDT',
         toAddress: result.toAddress,
         fromAddress: account,
+        inputData: result.inputData || result.transaction?.data || '0x',
+        blockNumber: result.receipt?.blockNumber,
         status: result.receipt.status === 1 ? 'success' : 'failed',
         gasUsed: result.receipt.gasUsed.toString()
       });
@@ -551,7 +576,7 @@ function AppContent() {
       title: '接收地址',
       dataIndex: 'toAddress',
       key: 'toAddress',
-      render: (address) => `${address.slice(0, 10)}...${address.slice(-8)}`
+      render: (address) => address ? `${address.slice(0, 10)}...${address.slice(-8)}` : '-'
     },
     {
       title: '状态',
@@ -735,13 +760,23 @@ function AppContent() {
               {selectedRecord.gasUsed && (
                 <Paragraph><strong>Gas使用量:</strong> {selectedRecord.gasUsed}</Paragraph>
               )}
-              {selectedRecord.id && (
+              {selectedRecord.dataType === 'transfer' && (
+                <Paragraph>
+                  <strong>Input Data:</strong>
+                  <br />
+                  <Text code style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: '12px' }}>
+                    {selectedRecord.inputData || '0x'}
+                  </Text>
+                </Paragraph>
+              )}
+              {/* 仅在非转账记录时显示合约信息 */}
+              {selectedRecord.dataType !== 'transfer' && selectedRecord.id && (
                 <Paragraph><strong>合约记录ID:</strong> #{selectedRecord.id}</Paragraph>
               )}
-              {selectedRecord.creator && (
+              {selectedRecord.dataType !== 'transfer' && selectedRecord.creator && (
                 <Paragraph><strong>创建者地址:</strong> {selectedRecord.creator}</Paragraph>
               )}
-              {selectedRecord.isActive !== undefined && (
+              {selectedRecord.dataType !== 'transfer' && selectedRecord.isActive !== undefined && (
                 <Paragraph>
                   <strong>记录状态:</strong> 
                   <Badge 
@@ -752,7 +787,19 @@ function AppContent() {
                 </Paragraph>
               )}
 
-              {selectedRecord.customData && typeof selectedRecord.customData === 'object' && (
+              {/* 转账记录只显示链上备注，不显示本地备注 */}
+              {selectedRecord.dataType === 'transfer' && selectedRecord.onChainMemo && (
+                <>
+                  <Divider>链上信息</Divider>
+                  <Paragraph>
+                    <strong>链上备注:</strong> {selectedRecord.onChainMemo}
+                    <Badge status="success" text="从链上读取" style={{ marginLeft: 8 }} />
+                  </Paragraph>
+                </>
+              )}
+              
+              {/* 非转账记录显示完整备注信息 */}
+              {selectedRecord.dataType !== 'transfer' && selectedRecord.customData && typeof selectedRecord.customData === 'object' && (
                 <>
                   <Divider>备注信息</Divider>
                   {selectedRecord.customData.memo && (
@@ -788,7 +835,8 @@ function AppContent() {
                 </>
               )}
 
-              {selectedRecord.customData && typeof selectedRecord.customData === 'string' && (
+              {/* 非转账记录的存储数据 */}
+              {selectedRecord.dataType !== 'transfer' && selectedRecord.customData && typeof selectedRecord.customData === 'string' && (
                 <>
                   <Divider>存储的数据</Divider>
                   <Paragraph>

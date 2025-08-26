@@ -19,7 +19,6 @@ class InfuraService {
     Object.entries(this.supportedNetworks).forEach(([chainId, networkName]) => {
       try {
         let provider;
-        console.log(networkName,'test')
         if (networkName === 'polygon') {
           provider = new ethers.providers.JsonRpcProvider(
             `https://polygon-mainnet.infura.io/v3/${this.infuraProjectId}`

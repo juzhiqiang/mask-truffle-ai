@@ -364,7 +364,7 @@ class ETHTransferService {
       if (!tx || !receipt) {
         return null;
       }
-
+      console.log(tx, receipt,'test')
       // 从区块链读取备注
       const memo = this.decodeMemoFromInputData(tx.data) || "";
       
@@ -604,7 +604,7 @@ class ETHTransferService {
       
       // 从区块链读取备注（不使用本地存储）
       const memo = tx ? this.decodeMemoFromInputData(tx.data) : "";
-
+console.log(memo)
       return {
         transaction: tx || {},
         receipt: receipt || {},
@@ -709,6 +709,84 @@ class ETHTransferService {
     }
 
     throw new Error(message);
+  }
+
+  // 获取钱包地址最新的交易记录
+  async getLatestTransactions(address, limit = 2) {
+    try {
+      if (!this.isValidAddress(address)) {
+        throw new Error('无效的钱包地址');
+      }
+
+      console.log(`正在获取地址 ${address} 最新的 ${limit} 条交易记录`);
+
+      // 获取最新的区块号
+      const latestBlock = await this.provider.getBlockNumber();
+      console.log('当前最新区块:', latestBlock);
+
+      const transactions = [];
+      let blocksToCheck = 1000; // 检查最近1000个区块
+      let currentBlock = latestBlock;
+
+      // 扫描最近的区块寻找相关交易
+      while (transactions.length < limit && blocksToCheck > 0 && currentBlock > 0) {
+        try {
+          const block = await this.provider.getBlockWithTransactions(currentBlock);
+          
+          if (block && block.transactions) {
+            // 查找与该地址相关的交易
+            const relevantTxs = block.transactions.filter(tx => 
+              tx.from?.toLowerCase() === address.toLowerCase() || 
+              tx.to?.toLowerCase() === address.toLowerCase()
+            );
+
+            for (const tx of relevantTxs) {
+              if (transactions.length >= limit) break;
+
+              try {
+                // 获取交易收据以获取状态信息
+                const receipt = await this.provider.getTransactionReceipt(tx.hash);
+                
+                // 解析备注信息
+                const memo = this.decodeMemoFromInputData(tx.data);
+
+                const formattedTx = {
+                  hash: tx.hash,
+                  from: tx.from,
+                  to: tx.to,
+                  value: ethers.utils.formatEther(tx.value || 0),
+                  inputData: tx.data || '0x',
+                  blockNumber: tx.blockNumber,
+                  timestamp: block.timestamp,
+                  gasUsed: receipt?.gasUsed,
+                  status: receipt?.status || 0,
+                  memo: memo || null,
+                  token: 'ETH'
+                };
+
+                transactions.push(formattedTx);
+              } catch (txError) {
+                console.warn('获取交易详情失败:', tx.hash, txError.message);
+              }
+            }
+          }
+        } catch (blockError) {
+          console.warn('获取区块失败:', currentBlock, blockError.message);
+        }
+
+        currentBlock--;
+        blocksToCheck--;
+      }
+
+      console.log(`成功获取到 ${transactions.length} 条交易记录`);
+      
+      // 按时间戳降序排序，确保最新的在前面
+      return transactions.sort((a, b) => b.timestamp - a.timestamp);
+
+    } catch (error) {
+      console.error('获取最新交易记录失败:', error);
+      throw new Error(`获取交易记录失败: ${error.message}`);
+    }
   }
 }
 
