@@ -42,6 +42,42 @@ class ETHTransferService {
     }
   }
 
+  // 检查网络是否支持EOA转账中的input data
+  async supportsInputDataInTransfers() {
+    try {
+      const network = await this.provider.getNetwork();
+      
+      // 已知不支持EOA转账包含data的网络
+      const unsupportedChains = [
+        // 可以根据实际情况添加不支持的网络ID
+        // 例如某些Layer 2或企业网络
+      ];
+      
+      // 检查是否为已知的不支持网络
+      if (unsupportedChains.includes(network.chainId)) {
+        return false;
+      }
+      
+      // 主网和主要测试网支持
+      const supportedChains = [1, 5, 11155111]; // mainnet, goerli, sepolia
+      return supportedChains.includes(network.chainId);
+    } catch (error) {
+      console.warn("检查input data支持失败, 假设支持:", error);
+      return true;
+    }
+  }
+
+  // 检查地址是否为EOA（外部拥有账户）
+  async isEOAAddress(address) {
+    try {
+      const code = await this.provider.getCode(address);
+      return code === "0x" || code === "0x0";
+    } catch (error) {
+      console.warn("检查地址类型失败:", error);
+      return true; // 假设是EOA
+    }
+  }
+
   async checkConnection() {
     if (!this.isInitialized) {
       throw new Error("服务未初始化，请先连接钱包");
@@ -126,6 +162,57 @@ class ETHTransferService {
     }
   }
 
+  // 测试是否可以发送带有input data的交易
+  async testInputDataSupport(toAddress, amount, memo) {
+    try {
+      const signer = await this.getSigner();
+      const amountInWei = ethers.utils.parseEther(amount.toString());
+      const inputData = this.encodeMemoToInputData(memo);
+      const useEIP1559 = await this.supportsEIP1559();
+
+      let txRequest;
+
+      if (useEIP1559) {
+        const feeData = await this.provider.getFeeData();
+        txRequest = {
+          to: toAddress,
+          value: amountInWei,
+          data: inputData,
+          type: 2,
+          maxFeePerGas: feeData.maxFeePerGas,
+          maxPriorityFeePerGas: feeData.maxPriorityFeePerGas,
+        };
+      } else {
+        const gasPrice = await this.provider.getGasPrice();
+        txRequest = {
+          to: toAddress,
+          value: amountInWei,
+          data: inputData,
+          type: 0,
+          gasPrice: gasPrice,
+        };
+      }
+
+      // 尝试估算gas - 如果失败则说明不支持
+      await signer.estimateGas(txRequest);
+      return true;
+    } catch (error) {
+      console.warn("Input data测试失败:", error.message);
+      
+      // 检查是否为特定的错误类型
+      if (
+        error.message.includes("External transactions to internal accounts cannot include data") ||
+        error.message.includes("cannot include data") ||
+        error.code === -32602
+      ) {
+        return false;
+      }
+      
+      // 其他错误也认为不支持
+      return false;
+    }
+  }
+
   async transferETH(toAddress, amount, memo = "", progressCallback = null) {
     try {
       // 进度回调：准备阶段
@@ -154,20 +241,58 @@ class ETHTransferService {
 
       // 进度回调：准备交易
       if (this.isValidCallback(progressCallback)) {
-        progressCallback(40, "正在准备转账交易...");
+        progressCallback(40, "正在检查网络兼容性...");
       }
 
       // 转换金额为Wei
       const amountInWei = ethers.utils.parseEther(amount.toString());
-
-      // 编码备注信息
-      const inputData = this.encodeMemoToInputData(memo);
 
       // 检查网络是否支持EIP-1559
       const useEIP1559 = await this.supportsEIP1559();
 
       let txRequest;
       let gasCost;
+      let canIncludeMemo = false;
+      let actualMemo = memo;
+
+      // 如果有备注，测试是否支持input data
+      if (memo && memo.trim() !== "") {
+        if (this.isValidCallback(progressCallback)) {
+          progressCallback(45, "正在测试备注兼容性...");
+        }
+
+        // 检查目标地址是否为EOA
+        const isEOA = await this.isEOAAddress(toAddress);
+        
+        if (isEOA) {
+          // 测试是否可以包含input data
+          canIncludeMemo = await this.testInputDataSupport(toAddress, amount, memo);
+        } else {
+          // 发送到合约地址通常可以包含data（虽然我们不使用合约逻辑）
+          canIncludeMemo = true;
+        }
+
+        console.log(`备注兼容性检查: 目标地址EOA=${isEOA}, 支持Input Data=${canIncludeMemo}`);
+      }
+
+      // 如果不能包含备注，提供用户选择
+      if (memo && memo.trim() !== "" && !canIncludeMemo) {
+        const errorMsg = `当前网络不支持在ETH转账中包含备注信息。备注信息将不会被包含在区块链交易中。是否继续进行无备注的转账？`;
+        
+        // 这里可以通过回调让用户选择
+        if (this.isValidCallback(progressCallback)) {
+          progressCallback(-1, errorMsg);
+        }
+        
+        // 抛出错误让调用者处理
+        throw new Error(errorMsg);
+      }
+
+      // 编码备注信息（如果支持）
+      const inputData = canIncludeMemo ? this.encodeMemoToInputData(memo) : "0x";
+      if (!canIncludeMemo) {
+        actualMemo = ""; // 清空备注
+      }
 
       if (useEIP1559) {
         // EIP-1559 交易 (type 2)
@@ -176,7 +301,7 @@ class ETHTransferService {
         txRequest = {
           to: toAddress,
           value: amountInWei,
-          data: inputData, // 包含备注信息的input data
+          data: inputData, // 可能为空
           type: 2,
           maxFeePerGas: feeData.maxFeePerGas,
           maxPriorityFeePerGas: feeData.maxPriorityFeePerGas,
@@ -193,11 +318,12 @@ class ETHTransferService {
         // 设置gas限制 (增加10%缓冲)
         txRequest.gasLimit = gasEstimate.mul(110).div(100);
 
-        console.log("Preparing EIP-1559 transaction with memo:", {
+        console.log("Preparing EIP-1559 transaction:", {
           maxFeePerGas: ethers.utils.formatUnits(feeData.maxFeePerGas, "gwei") + " Gwei",
           maxPriorityFeePerGas: ethers.utils.formatUnits(feeData.maxPriorityFeePerGas, "gwei") + " Gwei",
           inputDataLength: ethers.utils.hexDataLength(inputData),
-          memo: memo || "No memo"
+          memo: actualMemo || "No memo",
+          memoOnChain: canIncludeMemo
         });
 
       } else {
@@ -207,7 +333,7 @@ class ETHTransferService {
         txRequest = {
           to: toAddress,
           value: amountInWei,
-          data: inputData, // 包含备注信息的input data
+          data: inputData, // 可能为空
           type: 0, // Legacy transaction
           gasPrice: gasPrice,
         };
@@ -223,10 +349,11 @@ class ETHTransferService {
         // 设置gas限制 (增加10%缓冲)
         txRequest.gasLimit = gasEstimate.mul(110).div(100);
 
-        console.log("Preparing legacy transaction with memo:", {
+        console.log("Preparing legacy transaction:", {
           gasPrice: ethers.utils.formatUnits(gasPrice, "gwei") + " Gwei",
           inputDataLength: ethers.utils.hexDataLength(inputData),
-          memo: memo || "No memo"
+          memo: actualMemo || "No memo",
+          memoOnChain: canIncludeMemo
         });
       }
 
@@ -247,15 +374,16 @@ class ETHTransferService {
         progressCallback(75, "正在发送ETH转账交易，等待钱包签名...");
       }
 
-      console.log("Sending ETH transfer with input data:", {
+      console.log("Sending ETH transfer:", {
         from: fromAddress,
         to: toAddress,
         amount: amount + " ETH",
-        memo: memo || "No memo",
+        memo: actualMemo || "No memo",
         inputData: inputData,
         inputDataSize: ethers.utils.hexDataLength(inputData) + " bytes",
         gasLimit: txRequest.gasLimit.toString(),
         transactionType: useEIP1559 ? "EIP-1559" : "Legacy",
+        memoOnChain: canIncludeMemo
       });
 
       // 发送交易 - 这里会调起钱包签名
@@ -284,14 +412,16 @@ class ETHTransferService {
         amount,
         toAddress,
         fromAddress,
-        memo,
+        memo: actualMemo,
+        originalMemo: memo, // 用户原始输入的备注
         inputData,
         txHash: tx.hash,
         gasUsed: receipt.gasUsed.toString(),
         effectiveGasPrice: receipt.effectiveGasPrice.toString(),
         status: receipt.status === 1 ? "success" : "failed",
         transactionType: useEIP1559 ? "EIP-1559" : "Legacy",
-        memoIncludedOnChain: memo && memo.trim() !== "",
+        memoIncludedOnChain: canIncludeMemo && actualMemo !== "",
+        networkSupportsMemo: canIncludeMemo,
       };
     } catch (error) {
       console.error("ETH transfer failed:", error);
@@ -300,6 +430,11 @@ class ETHTransferService {
       }
       this.handleTransferError(error);
     }
+  }
+
+  // 简化版转账（不包含备注，确保兼容性）
+  async transferETHWithoutMemo(toAddress, amount, progressCallback = null) {
+    return await this.transferETH(toAddress, amount, "", progressCallback);
   }
 
   // 从区块链读取交易的备注信息
@@ -380,10 +515,13 @@ class ETHTransferService {
       }
 
       const network = await this.provider.getNetwork();
+      const supportsMemo = await this.supportsInputDataInTransfers();
+      
       return {
         chainId: network.chainId,
         name: network.name,
         ensAddress: network.ensAddress,
+        supportsMemoInTransfers: supportsMemo,
       };
     } catch (error) {
       console.error("获取网络信息失败:", error);
@@ -427,7 +565,14 @@ class ETHTransferService {
     try {
       const signer = await this.getSigner();
       const amountInWei = ethers.utils.parseEther(amount.toString());
-      const inputData = this.encodeMemoToInputData(memo);
+      
+      // 首先尝试包含备注
+      let canIncludeMemo = false;
+      if (memo && memo.trim() !== "") {
+        canIncludeMemo = await this.testInputDataSupport(toAddress, amount, memo);
+      }
+      
+      const inputData = canIncludeMemo ? this.encodeMemoToInputData(memo) : "0x";
       const useEIP1559 = await this.supportsEIP1559();
 
       let txRequest;
@@ -458,6 +603,8 @@ class ETHTransferService {
           maxPriorityFeePerGasGwei: ethers.utils.formatUnits(feeData.maxPriorityFeePerGas, "gwei"),
           inputDataSize: ethers.utils.hexDataLength(inputData) + " bytes",
           hasMemo: memo && memo.trim() !== "",
+          canIncludeMemo: canIncludeMemo,
+          networkSupportsMemo: canIncludeMemo,
         };
       } else {
         const gasPrice = await this.provider.getGasPrice();
@@ -481,6 +628,8 @@ class ETHTransferService {
           gasPriceGwei: ethers.utils.formatUnits(gasPrice, "gwei"),
           inputDataSize: ethers.utils.hexDataLength(inputData) + " bytes",
           hasMemo: memo && memo.trim() !== "",
+          canIncludeMemo: canIncludeMemo,
+          networkSupportsMemo: canIncludeMemo,
         };
       }
     } catch (error) {
@@ -578,6 +727,11 @@ class ETHTransferService {
         message = "无效的以太坊地址";
       } else if (error.message.includes("transaction envelope type")) {
         message = "交易类型不兼容，已自动切换为兼容模式";
+      } else if (
+        error.message.includes("External transactions to internal accounts cannot include data") ||
+        error.message.includes("cannot include data")
+      ) {
+        message = "当前网络不支持在ETH转账中包含备注信息，请选择是否继续无备注转账";
       } else {
         message = error.message;
       }
