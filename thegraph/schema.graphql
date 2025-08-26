@@ -1,0 +1,120 @@
+type LogEntry @entity {
+  id: ID!
+  logId: BigInt!
+  creator: User!
+  level: LogLevel!
+  category: Category!
+  message: String!
+  metadata: String
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+  isActive: Boolean!
+  
+  # Relationships
+  updates: [LogUpdate!]! @derivedFrom(field: "logEntry")
+}
+
+type User @entity {
+  id: ID! # address
+  address: Bytes!
+  totalLogs: BigInt!
+  activeLogs: BigInt!
+  firstLogTimestamp: BigInt
+  lastLogTimestamp: BigInt
+  
+  # Relationships
+  logs: [LogEntry!]! @derivedFrom(field: "creator")
+  logUpdates: [LogUpdate!]! @derivedFrom(field: "updater")
+  categories: [UserCategory!]! @derivedFrom(field: "user")
+}
+
+type Category @entity {
+  id: ID! # category name
+  name: String!
+  totalLogs: BigInt!
+  activeLogs: BigInt!
+  firstLogTimestamp: BigInt
+  lastLogTimestamp: BigInt
+  
+  # Relationships
+  logs: [LogEntry!]! @derivedFrom(field: "category")
+  users: [UserCategory!]! @derivedFrom(field: "category")
+}
+
+type UserCategory @entity {
+  id: ID! # user-category composite id
+  user: User!
+  category: Category!
+  totalLogs: BigInt!
+  activeLogs: BigInt!
+  firstLogTimestamp: BigInt
+  lastLogTimestamp: BigInt
+}
+
+type LogUpdate @entity {
+  id: ID! # transaction hash + log index
+  logEntry: LogEntry!
+  updater: User!
+  newMessage: String!
+  newMetadata: String
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type BatchLogOperation @entity {
+  id: ID! # transaction hash
+  creator: User!
+  logIds: [BigInt!]!
+  count: BigInt!
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type LogStats @entity {
+  id: ID! # timestamp
+  totalLogs: BigInt!
+  activeLogs: BigInt!
+  queriedBy: User!
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type GlobalStats @entity {
+  id: ID! # "global"
+  totalLogs: BigInt!
+  activeLogs: BigInt!
+  totalUsers: BigInt!
+  totalCategories: BigInt!
+  lastUpdateTimestamp: BigInt!
+  lastUpdateBlock: BigInt!
+}
+
+enum LogLevel {
+  DEBUG
+  INFO
+  WARN
+  ERROR
+  FATAL
+}
+
+type DailyStats @entity {
+  id: ID! # date (YYYY-MM-DD)
+  date: String!
+  totalLogs: BigInt!
+  activeLogs: BigInt!
+  uniqueUsers: BigInt!
+  uniqueCategories: BigInt!
+  debugLogs: BigInt!
+  infoLogs: BigInt!
+  warnLogs: BigInt!
+  errorLogs: BigInt!
+  fatalLogs: BigInt!
+}
