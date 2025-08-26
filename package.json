@@ -10,6 +10,8 @@
     "migrate": "truffle migrate",
     "migrate:reset": "truffle migrate --reset",
     "migrate:sepolia": "truffle migrate --network sepolia",
+    "migrate:ganache": "truffle migrate --network ganache --reset",
+    "deploy:local": "node scripts/deploy-local.js",
     "test": "truffle test",
     "test:coverage": "truffle run coverage",
     "console": "truffle console",
@@ -41,7 +43,8 @@
     "@truffle/hdwallet-provider": "^2.1.15",
     "truffle": "^5.11.5",
     "dotenv": "^16.3.1",
-    "chai": "^4.3.7"
+    "chai": "^4.3.7",
+    "ganache": "^7.9.1"
   },
   "dependencies": {
     "@openzeppelin/contracts": "^4.9.3"

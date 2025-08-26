@@ -172,9 +172,12 @@ const DATA_LOG_CONTRACT_ADDRESSES = {
   // 以太坊测试网
   'goerli': '0x0000000000000000000000000000000000000000', // 待部署
   'sepolia': '0x0000000000000000000000000000000000000000', // 待部署
-  // 本地开发网络
-  'hardhat': '0x0000000000000000000000000000000000000000', // 待部署
-  'ganache': '0x0000000000000000000000000000000000000000', // 待部署
+  // 本地开发网络 - 为测试启用
+  'hardhat': '0x5FbDB2315678afecb367f032d93F642f64180aa3', // 示例地址，请替换为实际部署的地址
+  'ganache': '0x5FbDB2315678afecb367f032d93F642f64180aa3', // 示例地址，请替换为实际部署的地址
+  // 添加更多本地测试支持
+  'localhost': '0x5FbDB2315678afecb367f032d93F642f64180aa3', // 本地测试
+  'development': '0x5FbDB2315678afecb367f032d93F642f64180aa3', // 开发环境
 };
 
 class LogChainService {
@@ -254,15 +257,33 @@ class LogChainService {
         5: 'goerli', 
         11155111: 'sepolia',
         31337: 'hardhat',
-        1337: 'ganache'
+        1337: 'ganache',  // Ganache CLI 常用网络ID
+        5777: 'ganache',  // Ganache GUI 常用网络ID
+        // 添加更多本地开发网络支持
+        1338: 'localhost',
+        999: 'development',
+        // Polygon 网络
+        137: 'polygon',
+        80001: 'mumbai',
+        // BSC 网络
+        56: 'bsc',
+        97: 'bsc-testnet'
       };
       
-      const networkName = networkNames[network.chainId] || 'unknown';
+      let networkName = networkNames[network.chainId];
+      
+      // 如果没有匹配到具体网络，但是是本地网络范围，默认为ganache
+      if (!networkName && network.chainId >= 1337 && network.chainId <= 1400) {
+        networkName = 'ganache';
+        console.log(`检测到本地网络 (Chain ID: ${network.chainId})，映射为 ganache`);
+      } else if (!networkName) {
+        networkName = 'unknown';
+      }
       
       return {
         chainId: network.chainId,
         name: networkName,
-        displayName: network.name
+        displayName: network.name || `Chain ${network.chainId}`
       };
     } catch (error) {
       console.error('获取网络信息失败:', error);
@@ -278,9 +299,22 @@ class LogChainService {
         throw new Error('无法获取网络信息');
       }
 
+      console.log('当前网络信息:', {
+        chainId: network.chainId,
+        name: network.name,
+        displayName: network.displayName
+      });
+
       const contractAddress = DATA_LOG_CONTRACT_ADDRESSES[network.name];
+      
+      console.log('查找合约地址:', {
+        networkName: network.name,
+        contractAddress: contractAddress,
+        availableNetworks: Object.keys(DATA_LOG_CONTRACT_ADDRESSES)
+      });
+      
       if (!contractAddress || contractAddress === '0x0000000000000000000000000000000000000000') {
-        throw new Error(`当前网络 ${network.displayName} 暂不支持数据日志合约功能`);
+        throw new Error(`当前网络 ${network.displayName} (Chain ID: ${network.chainId}) 暂不支持数据日志合约功能。支持的网络: ${Object.keys(DATA_LOG_CONTRACT_ADDRESSES).join(', ')}`);
       }
 
       if (!this.contract || this.contract.address !== contractAddress) {

@@ -5,8 +5,22 @@ module.exports = {
   networks: {
     development: {
       host: '127.0.0.1',
-      port: 7545,
+      port: 7545, // Ganache GUI 默认端口
       network_id: '*',
+      gas: 6721975,
+      gasPrice: 20000000000,
+    },
+    ganache: {
+      host: '127.0.0.1',
+      port: 8545, // Ganache CLI 默认端口
+      network_id: '*',
+      gas: 6721975,
+      gasPrice: 20000000000,
+    },
+    ganache_cli: {
+      host: '127.0.0.1',
+      port: 8545,
+      network_id: 1337, // 固定网络ID
       gas: 6721975,
       gasPrice: 20000000000,
     },
