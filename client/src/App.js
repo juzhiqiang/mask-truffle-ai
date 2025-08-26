@@ -330,7 +330,7 @@ function AppContent() {
         gasUsed: result.gasUsed
       });
 
-      message.success('🎉 ETH转账成功！' + (result.memoIncludedOnChain ? '备注已写入区块链' : ''));
+      message.success(`🎉 ETH转账成功！已发送到 ${result.toAddress.slice(0, 6)}...${result.toAddress.slice(-4)}` + (result.memoIncludedOnChain ? ' (备注已写入区块链)' : ''));
       ethTransferForm.resetFields();
 
       // 更新余额
@@ -393,7 +393,7 @@ function AppContent() {
         gasUsed: result.receipt.gasUsed.toString()
       });
 
-      message.success('USDT转账成功！');
+      message.success(`🎉 USDT转账成功！已发送到 ${result.toAddress.slice(0, 6)}...${result.toAddress.slice(-4)}`);
       usdtTransferForm.resetFields();
 
       // 更新余额
@@ -603,7 +603,7 @@ function AppContent() {
         gasUsed: result.gasUsed
       });
 
-      message.success('🎉 日志上链成功！');
+      message.success(`🎉 日志上链成功！合约地址: ${result.contractAddress.slice(0, 6)}...${result.contractAddress.slice(-4)}`);
       logUploadForm.resetFields();
 
       // 获取最新交易记录
