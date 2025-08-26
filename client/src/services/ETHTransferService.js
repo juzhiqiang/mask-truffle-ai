@@ -155,7 +155,7 @@ class ETHTransferService {
 
       // 尝试包含备注，如果失败则自动回退到无备注模式
       const inputData = this.encodeMemoToInputData(memo);
-      let actualMemo = memo;
+      let actualMemo = memo || "";
       let memoStoredOnChain = false;
 
       if (useEIP1559) {
@@ -285,37 +285,45 @@ class ETHTransferService {
       const chainMemo = await this.getTransactionMemo(tx.hash);
 
       return {
-        // 交易基本信息
-        txHash: tx.hash,
-        from: fromAddress,
-        to: toAddress,
-        amount: amount,
-        amountETH: amount + " ETH",
+        // 交易基本信息 - 确保所有字段都有默认值
+        txHash: tx.hash || "",
+        from: fromAddress || "",
+        to: toAddress || "",
+        amount: amount || "0",
+        amountETH: (amount || "0") + " ETH",
         
         // 交易对象和收据
-        transaction: tx,
-        receipt: receipt,
+        transaction: tx || {},
+        receipt: receipt || {},
         
-        // Gas信息
-        gasUsed: receipt.gasUsed.toString(),
-        effectiveGasPrice: receipt.effectiveGasPrice.toString(),
-        gasCostETH: ethers.utils.formatEther(receipt.gasUsed.mul(receipt.effectiveGasPrice)),
+        // Gas信息 - 提供安全的默认值
+        gasUsed: receipt?.gasUsed?.toString() || "0",
+        effectiveGasPrice: receipt?.effectiveGasPrice?.toString() || "0",
+        gasCostETH: receipt?.gasUsed && receipt?.effectiveGasPrice 
+          ? ethers.utils.formatEther(receipt.gasUsed.mul(receipt.effectiveGasPrice))
+          : "0",
         
-        // 状态信息
-        status: receipt.status === 1 ? "success" : "failed",
-        confirmations: receipt.confirmations || 0,
-        blockNumber: receipt.blockNumber,
+        // 状态信息 - 提供安全的默认值
+        status: receipt?.status === 1 ? "success" : "failed",
+        confirmations: receipt?.confirmations || 0,
+        blockNumber: receipt?.blockNumber || 0,
         transactionType: useEIP1559 ? "EIP-1559" : "Legacy",
         
-        // 备注信息（只从区块链读取）
-        memo: chainMemo, // 从区块链实际读取的备注
-        originalMemoInput: memo, // 用户原始输入（仅供参考）
-        hasMemoOnChain: chainMemo && chainMemo.trim() !== "",
+        // 备注信息（只从区块链读取） - 确保字符串类型
+        memo: chainMemo || "", // 从区块链实际读取的备注
+        originalMemoInput: memo || "", // 用户原始输入（仅供参考）
+        hasMemoOnChain: !!(chainMemo && chainMemo.trim() !== ""),
         
-        // 交易分类信息（用于UI显示）
+        // 交易分类信息（用于UI显示） - 提供明确的布尔值
         transactionCategory: "ETH_TRANSFER", // 标识为ETH转账，非合约交互
         isContractInteraction: false, // 明确标识不是合约交互
         isSimpleTransfer: true, // 标识为简单转账
+        
+        // 确保这些字段存在且为字符串类型
+        contractAddress: "", // 空字符串而不是null
+        methodName: "", // 空字符串而不是null
+        inputData: tx?.data || "0x",
+        inputDataSize: tx?.data ? ethers.utils.hexDataLength(tx.data) : 0,
       };
     } catch (error) {
       console.error("ETH transfer failed:", error);
@@ -337,10 +345,11 @@ class ETHTransferService {
       }
 
       // 只从区块链input data解码，不使用任何本地存储
-      return this.decodeMemoFromInputData(tx.data);
+      const decoded = this.decodeMemoFromInputData(tx.data);
+      return decoded || ""; // 确保返回字符串
     } catch (error) {
       console.error("读取区块链备注失败:", error);
-      return "";
+      return ""; // 返回空字符串而不是undefined
     }
   }
 
@@ -357,7 +366,7 @@ class ETHTransferService {
       }
 
       // 从区块链读取备注
-      const memo = this.decodeMemoFromInputData(tx.data);
+      const memo = this.decodeMemoFromInputData(tx.data) || "";
       
       // 计算实际Gas费用
       const gasCostWei = receipt.gasUsed.mul(receipt.effectiveGasPrice);
@@ -367,49 +376,50 @@ class ETHTransferService {
       const networkSupportsEIP1559 = await this.supportsEIP1559();
 
       return {
-        // 基本交易信息
-        hash: tx.hash,
-        from: tx.from,
-        to: tx.to,
+        // 基本交易信息 - 确保所有字符串字段都有值
+        hash: tx.hash || "",
+        from: tx.from || "",
+        to: tx.to || "",
         value: ethers.utils.formatEther(tx.value || "0"),
         valueETH: ethers.utils.formatEther(tx.value || "0") + " ETH",
         
-        // 区块信息
-        blockNumber: receipt.blockNumber,
-        blockHash: receipt.blockHash,
-        transactionIndex: receipt.transactionIndex,
+        // 区块信息 - 确保数字字段有默认值
+        blockNumber: receipt.blockNumber || 0,
+        blockHash: receipt.blockHash || "",
+        transactionIndex: receipt.transactionIndex || 0,
         confirmations: receipt.confirmations || 0,
         
-        // Gas信息
+        // Gas信息 - 确保所有字段都有值
         gasLimit: tx.gasLimit?.toString() || "0",
-        gasUsed: receipt.gasUsed.toString(),
-        gasPrice: tx.gasPrice?.toString() || receipt.effectiveGasPrice.toString(),
-        gasCostWei: gasCostWei.toString(),
-        gasCostETH: gasCostETH,
-        gasPriceGwei: ethers.utils.formatUnits(receipt.effectiveGasPrice, "gwei"),
+        gasUsed: receipt.gasUsed?.toString() || "0",
+        gasPrice: tx.gasPrice?.toString() || receipt.effectiveGasPrice?.toString() || "0",
+        gasCostWei: gasCostWei?.toString() || "0",
+        gasCostETH: gasCostETH || "0",
+        gasPriceGwei: ethers.utils.formatUnits(receipt.effectiveGasPrice || "0", "gwei"),
         
         // 状态
         status: receipt.status === 1 ? "success" : "failed",
         
-        // 备注信息（纯区块链数据）
+        // 备注信息（纯区块链数据） - 确保字符串类型
         memo: memo, // 从区块链input data解码
-        hasInputData: tx.data && tx.data !== "0x",
+        hasInputData: !!(tx.data && tx.data !== "0x"),
         inputData: tx.data || "0x",
         inputDataSize: tx.data ? ethers.utils.hexDataLength(tx.data) : 0,
         
-        // 交易分类（用于UI正确显示）
+        // 交易分类（用于UI正确显示） - 确保字符串类型
         transactionType: "ETH_TRANSFER", // 明确标识为ETH转账
         isContractCall: false, // 不是合约调用
         isSimpleTransfer: true, // 简单转账
-        contractAddress: null, // 无合约地址
-        methodName: null, // 无方法名
+        contractAddress: "", // 空字符串而不是null
+        methodName: "", // 空字符串而不是null
         
         // 网络信息
         networkType: networkSupportsEIP1559 ? "EIP-1559" : "Legacy",
-        chainId: tx.chainId,
+        chainId: tx.chainId || 0,
         
-        // 时间信息（需要从区块获取）
-        timestamp: null, // 将在下面获取
+        // 时间信息
+        timestamp: 0, // 默认值，将在getTransactionDetailsWithTimestamp中设置
+        blockTime: "", // 默认值
       };
     } catch (error) {
       console.error("获取交易详情失败:", error);
@@ -425,8 +435,10 @@ class ETHTransferService {
 
       // 获取区块时间戳
       const block = await this.provider.getBlock(details.blockNumber);
-      details.timestamp = block.timestamp;
-      details.blockTime = new Date(block.timestamp * 1000).toLocaleString();
+      details.timestamp = block?.timestamp || 0;
+      details.blockTime = block?.timestamp 
+        ? new Date(block.timestamp * 1000).toLocaleString()
+        : "";
 
       return details;
     } catch (error) {
@@ -443,9 +455,9 @@ class ETHTransferService {
 
       const network = await this.provider.getNetwork();
       return {
-        chainId: network.chainId,
-        name: network.name,
-        ensAddress: network.ensAddress,
+        chainId: network.chainId || 0,
+        name: network.name || "",
+        ensAddress: network.ensAddress || "",
       };
     } catch (error) {
       console.error("获取网络信息失败:", error);
@@ -465,18 +477,18 @@ class ETHTransferService {
         const feeData = await this.provider.getFeeData();
         return {
           type: "EIP-1559",
-          maxFeePerGas: feeData.maxFeePerGas.toString(),
-          maxPriorityFeePerGas: feeData.maxPriorityFeePerGas.toString(),
-          maxFeePerGasGwei: ethers.utils.formatUnits(feeData.maxFeePerGas, "gwei"),
-          maxPriorityFeePerGasGwei: ethers.utils.formatUnits(feeData.maxPriorityFeePerGas, "gwei"),
+          maxFeePerGas: feeData.maxFeePerGas?.toString() || "0",
+          maxPriorityFeePerGas: feeData.maxPriorityFeePerGas?.toString() || "0",
+          maxFeePerGasGwei: ethers.utils.formatUnits(feeData.maxFeePerGas || "0", "gwei"),
+          maxPriorityFeePerGasGwei: ethers.utils.formatUnits(feeData.maxPriorityFeePerGas || "0", "gwei"),
         };
       } else {
         const gasPrice = await this.provider.getGasPrice();
         return {
           type: "Legacy",
-          gasPrice: gasPrice.toString(),
-          gasPriceGwei: ethers.utils.formatUnits(gasPrice, "gwei"),
-          gasPriceEth: ethers.utils.formatEther(gasPrice),
+          gasPrice: gasPrice?.toString() || "0",
+          gasPriceGwei: ethers.utils.formatUnits(gasPrice || "0", "gwei"),
+          gasPriceEth: ethers.utils.formatEther(gasPrice || "0"),
         };
       }
     } catch (error) {
@@ -528,13 +540,13 @@ class ETHTransferService {
 
         return {
           transactionType: "EIP-1559",
-          gasLimit: gasEstimate.toString(),
-          maxFeePerGas: feeData.maxFeePerGas.toString(),
-          maxPriorityFeePerGas: feeData.maxPriorityFeePerGas.toString(),
-          gasCostWei: gasCost.toString(),
-          gasCostETH: ethers.utils.formatEther(gasCost),
-          maxFeePerGasGwei: ethers.utils.formatUnits(feeData.maxFeePerGas, "gwei"),
-          maxPriorityFeePerGasGwei: ethers.utils.formatUnits(feeData.maxPriorityFeePerGas, "gwei"),
+          gasLimit: gasEstimate?.toString() || "0",
+          maxFeePerGas: feeData.maxFeePerGas?.toString() || "0",
+          maxPriorityFeePerGas: feeData.maxPriorityFeePerGas?.toString() || "0",
+          gasCostWei: gasCost?.toString() || "0",
+          gasCostETH: ethers.utils.formatEther(gasCost || "0"),
+          maxFeePerGasGwei: ethers.utils.formatUnits(feeData.maxFeePerGas || "0", "gwei"),
+          maxPriorityFeePerGasGwei: ethers.utils.formatUnits(feeData.maxPriorityFeePerGas || "0", "gwei"),
           canIncludeMemo: canIncludeMemo,
           memoWillBeStored: canIncludeMemo && memo && memo.trim() !== "",
         };
@@ -568,11 +580,11 @@ class ETHTransferService {
 
         return {
           transactionType: "Legacy",
-          gasLimit: gasEstimate.toString(),
-          gasPrice: gasPrice.toString(),
-          gasCostWei: gasCost.toString(),
-          gasCostETH: ethers.utils.formatEther(gasCost),
-          gasPriceGwei: ethers.utils.formatUnits(gasPrice, "gwei"),
+          gasLimit: gasEstimate?.toString() || "0",
+          gasPrice: gasPrice?.toString() || "0",
+          gasCostWei: gasCost?.toString() || "0",
+          gasCostETH: ethers.utils.formatEther(gasCost || "0"),
+          gasPriceGwei: ethers.utils.formatUnits(gasPrice || "0", "gwei"),
           canIncludeMemo: canIncludeMemo,
           memoWillBeStored: canIncludeMemo && memo && memo.trim() !== "",
         };
@@ -594,23 +606,30 @@ class ETHTransferService {
       const memo = tx ? this.decodeMemoFromInputData(tx.data) : "";
 
       return {
-        transaction: tx,
-        receipt: receipt,
-        memo: memo, // 纯区块链数据
+        transaction: tx || {},
+        receipt: receipt || {},
+        memo: memo || "", // 确保是字符串
         status: receipt
           ? receipt.status === 1
             ? "success"
             : "failed"
           : "pending",
-        confirmations: receipt ? receipt.confirmations : 0,
-        blockNumber: receipt ? receipt.blockNumber : null,
-        gasUsed: receipt ? receipt.gasUsed.toString() : null,
-        hasInputData: tx && tx.data && tx.data !== "0x",
+        confirmations: receipt?.confirmations || 0,
+        blockNumber: receipt?.blockNumber || 0,
+        gasUsed: receipt?.gasUsed?.toString() || "0",
+        hasInputData: !!(tx && tx.data && tx.data !== "0x"),
         
-        // UI显示标识
+        // UI显示标识 - 确保字符串类型
         transactionCategory: "ETH_TRANSFER",
         isContractInteraction: false,
         isSimpleTransfer: true,
+        
+        // 确保字段存在
+        hash: tx?.hash || "",
+        from: tx?.from || "",
+        to: tx?.to || "",
+        value: ethers.utils.formatEther(tx?.value || "0"),
+        inputData: tx?.data || "0x",
       };
     } catch (error) {
       console.error("获取交易状态失败:", error);
