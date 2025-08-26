@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Layout, Menu, Card, Form, Input, InputNumber, Button, Row, Col, message, Tabs, Table, Modal, Badge, Typography, Space, Divider } from 'antd';
-import { SendOutlined, HistoryOutlined, WalletOutlined, DatabaseOutlined, EyeOutlined } from '@ant-design/icons';
+import { Layout, Menu, Card, Form, Input, InputNumber, Button, Row, Col, message, Tabs, Table, Modal, Badge, Typography, Space, Divider, Select } from 'antd';
+import { SendOutlined, HistoryOutlined, WalletOutlined, DatabaseOutlined, EyeOutlined, FileTextOutlined } from '@ant-design/icons';
 import { Web3ReactProvider } from '@web3-react/core';
 import { ethers } from 'ethers';
 
@@ -10,6 +10,7 @@ import ProgressBar from './components/ProgressBar';
 import ETHTransferService from './services/ETHTransferService';
 import USDTService from './services/USDTService';
 import InfuraService from './services/InfuraService';
+import LogChainService from './services/LogChainService';
 import './App.css';
 
 const { Header, Content, Footer } = Layout;
@@ -38,6 +39,7 @@ function AppContent() {
   const [progressVisible, setProgressVisible] = useState(false);
   const [progressPercent, setProgressPercent] = useState(0);
   const [progressStatus, setProgressStatus] = useState('');
+  const [progressMessage, setProgressMessage] = useState('');
 
   // Modal状态
   const [viewModalVisible, setViewModalVisible] = useState(false);
@@ -46,20 +48,29 @@ function AppContent() {
   // 表单实例
   const [ethTransferForm] = Form.useForm();
   const [usdtTransferForm] = Form.useForm();
+  const [logUploadForm] = Form.useForm();
 
   // 服务实例
   const [ethTransferService] = useState(() => new ETHTransferService());
   const [usdtService] = useState(() => new USDTService());
   const [infuraService] = useState(() => new InfuraService());
+  const [logChainService] = useState(() => new LogChainService());
 
   // 进度条控制函数
   const showProgress = () => setProgressVisible(true);
   const hideProgress = () => setProgressVisible(false);
-  const updateProgress = (percent, status) => {
+  const updateProgress = (percent, message) => {
     setProgressPercent(percent);
-    setProgressStatus(status);
-    if (percent >= 100 || percent < 0) {
+    setProgressMessage(message);
+    
+    if (percent >= 100) {
+      setProgressStatus('success');
       setTimeout(hideProgress, 2000);
+    } else if (percent < 0) {
+      setProgressStatus('exception');
+      setTimeout(hideProgress, 3000);
+    } else {
+      setProgressStatus('active');
     }
   };
 
@@ -558,6 +569,162 @@ function AppContent() {
     );
   };
 
+  // 日志上链处理
+  const handleLogUpload = async (values) => {
+    if (!account) {
+      message.error('请先连接钱包');
+      return;
+    }
+
+    setLoading(true);
+    showProgress();
+    
+    try {
+      updateProgress(5, '开始日志上链...');
+
+      // 调用合约写入日志数据
+      const result = await logChainService.uploadLogToChain(
+        values.logData,
+        values.logType || 'info',
+        updateProgress
+      );
+
+      // 保存记录
+      saveTransactionRecord({
+        dataType: 'log',
+        txHash: result.txHash,
+        logType: values.logType || 'info',
+        logData: values.logData,
+        logId: result.logId,
+        contractAddress: result.contractAddress,
+        inputData: result.inputData || '0x',
+        blockNumber: result.blockNumber,
+        status: result.status,
+        gasUsed: result.gasUsed
+      });
+
+      message.success('🎉 日志上链成功！');
+      logUploadForm.resetFields();
+
+      // 获取最新交易记录
+      fetchLatestOnChainTransactions(account);
+    } catch (error) {
+      console.error('日志上链失败:', error);
+      message.error('日志上链失败: ' + error.message);
+      updateProgress(-1, '日志上链失败: ' + error.message);
+    } finally {
+      setLoading(false);
+      hideProgress();
+    }
+  };
+
+  // 日志上链表单组件
+  const LogUploadForm = () => {
+    const [networkSupported, setNetworkSupported] = useState(null);
+
+    // 检查网络支持状态
+    useEffect(() => {
+      const checkNetworkSupport = async () => {
+        if (account && logChainService) {
+          try {
+            const supported = await logChainService.isNetworkSupported();
+            setNetworkSupported(supported);
+          } catch (error) {
+            console.error('检查网络支持失败:', error);
+            setNetworkSupported(false);
+          }
+        } else {
+          setNetworkSupported(null);
+        }
+      };
+
+      checkNetworkSupport();
+    }, [account, network]);
+
+    return (
+      <Form
+        form={logUploadForm}
+        layout="vertical"
+        onFinish={handleLogUpload}
+        disabled={!account || !networkSupported}
+      >
+        {!account && (
+          <div style={{ marginBottom: 16, padding: 12, backgroundColor: '#fff7e6', border: '1px solid #ffd591', borderRadius: 6 }}>
+            <Typography.Text type="warning">请先连接钱包以使用日志上链功能</Typography.Text>
+          </div>
+        )}
+        
+        {account && networkSupported === false && (
+          <div style={{ marginBottom: 16, padding: 12, backgroundColor: '#fff2f0', border: '1px solid #ffccc7', borderRadius: 6 }}>
+            <Typography.Text type="danger">当前网络暂不支持日志合约功能，请切换到支持的网络</Typography.Text>
+          </div>
+        )}
+
+        <Row gutter={16}>
+          <Col span={12}>
+            <Form.Item
+              label="日志类型"
+              name="logType"
+              initialValue="info"
+              rules={[
+                { required: true, message: '请选择日志类型' }
+              ]}
+            >
+              <Select 
+                placeholder="选择日志类型"
+                options={[
+                  { label: 'Info - 信息日志', value: 'info' },
+                  { label: 'Warning - 警告日志', value: 'warning' },
+                  { label: 'Error - 错误日志', value: 'error' },
+                  { label: 'Debug - 调试日志', value: 'debug' }
+                ]}
+              />
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item
+              label="时间戳"
+            >
+              <Input 
+                placeholder="自动生成"
+                disabled
+                value={new Date().toLocaleString()}
+              />
+            </Form.Item>
+          </Col>
+        </Row>
+
+        <Form.Item
+          label="日志数据"
+          name="logData"
+          rules={[
+            { required: true, message: '请输入要上链的日志数据' },
+            { max: 1000, message: '日志数据不能超过1000字符' }
+          ]}
+        >
+          <Input.TextArea
+            rows={6}
+            placeholder="请输入要写入区块链的日志数据..."
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </Form.Item>
+
+        <Form.Item>
+          <Button
+            type="primary"
+            htmlType="submit"
+            loading={loading}
+            disabled={!account || loading || !networkSupported}
+            icon={<FileTextOutlined />}
+          >
+            {!account ? '请先连接钱包' : (!networkSupported && networkSupported !== null) ? '网络不支持' : '写入区块链'}
+          </Button>
+        </Form.Item>
+      </Form>
+    );
+  };
+
   // 交易记录表格列定义
   const transactionColumns = [
     {
@@ -624,51 +791,6 @@ function AppContent() {
       </Header>
 
       <Content style={{ padding: '24px', background: '#f0f2f5' }}>
-        {progressVisible && (
-          <Card style={{ marginBottom: 24 }}>
-            <ProgressBar
-              visible={progressVisible}
-              percent={progressPercent}
-              status={progressStatus}
-            />
-          </Card>
-        )}
-
-        {account && (
-          <Row gutter={24} style={{ marginBottom: 24 }}>
-            <Col span={8}>
-              <Card>
-                <div style={{ textAlign: 'center' }}>
-                  <Title level={4}>ETH 余额</Title>
-                  <Text style={{ fontSize: '24px', color: '#1890ff' }}>
-                    {parseFloat(ethBalance).toFixed(6)}
-                  </Text>
-                </div>
-              </Card>
-            </Col>
-            <Col span={8}>
-              <Card>
-                <div style={{ textAlign: 'center' }}>
-                  <Title level={4}>USDT 余额</Title>
-                  <Text style={{ fontSize: '24px', color: '#52c41a' }}>
-                    {activeTab === 'usdt-transfer' ? parseFloat(usdtBalance).toFixed(2) : '需切换到USDT页面'}
-                  </Text>
-                </div>
-              </Card>
-            </Col>
-            <Col span={8}>
-              <Card>
-                <div style={{ textAlign: 'center' }}>
-                  <Title level={4}>网络</Title>
-                  <Text style={{ fontSize: '16px' }}>
-                    {network ? `${network.name} (${network.chainId})` : '未连接'}
-                  </Text>
-                </div>
-              </Card>
-            </Col>
-          </Row>
-        )}
-
         {/* 功能标签页 - 只包含操作功能 */}
         <Card style={{ marginBottom: 24 }}>
           <Tabs defaultActiveKey="eth-transfer" onChange={handleTabChange}>
@@ -678,6 +800,10 @@ function AppContent() {
 
             <TabPane tab={<span><SendOutlined />USDT 转账</span>} key="usdt-transfer">
               <USDTTransferForm />
+            </TabPane>
+
+            <TabPane tab={<span><FileTextOutlined />日志上链</span>} key="log-upload">
+              <LogUploadForm />
             </TabPane>
           </Tabs>
         </Card>
@@ -856,6 +982,15 @@ function AppContent() {
           Mask Truffle AI ©2024 - 去中心化数据存储与转账平台
         </Text>
       </Footer>
+
+      {/* 进度条模态框 */}
+      <ProgressBar
+        visible={progressVisible}
+        progress={progressPercent}
+        status={progressStatus}
+        message={progressMessage}
+        onCancel={hideProgress}
+      />
     </Layout>
   );
 }
