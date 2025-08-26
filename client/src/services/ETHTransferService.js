@@ -363,6 +363,9 @@ class ETHTransferService {
       const gasCostWei = receipt.gasUsed.mul(receipt.effectiveGasPrice);
       const gasCostETH = ethers.utils.formatEther(gasCostWei);
 
+      // 检查网络是否支持EIP-1559
+      const networkSupportsEIP1559 = await this.supportsEIP1559();
+
       return {
         // 基本交易信息
         hash: tx.hash,
@@ -402,7 +405,7 @@ class ETHTransferService {
         methodName: null, // 无方法名
         
         // 网络信息
-        networkType: useEIP1559 ? "EIP-1559" : "Legacy",
+        networkType: networkSupportsEIP1559 ? "EIP-1559" : "Legacy",
         chainId: tx.chainId,
         
         // 时间信息（需要从区块获取）
@@ -491,6 +494,7 @@ class ETHTransferService {
 
       let txRequest;
       let gasCost;
+      let gasEstimate;
       let canIncludeMemo = true;
 
       if (useEIP1559) {
@@ -505,7 +509,7 @@ class ETHTransferService {
         };
         
         try {
-          const gasEstimate = await signer.estimateGas(txRequest);
+          gasEstimate = await signer.estimateGas(txRequest);
           gasCost = gasEstimate.mul(feeData.maxFeePerGas);
         } catch (estimateError) {
           // 如果包含备注失败，估算无备注版本
@@ -515,7 +519,7 @@ class ETHTransferService {
             
             txRequest.data = "0x";
             canIncludeMemo = false;
-            const gasEstimate = await signer.estimateGas(txRequest);
+            gasEstimate = await signer.estimateGas(txRequest);
             gasCost = gasEstimate.mul(feeData.maxFeePerGas);
           } else {
             throw estimateError;
@@ -545,7 +549,7 @@ class ETHTransferService {
         };
 
         try {
-          const gasEstimate = await signer.estimateGas(txRequest);
+          gasEstimate = await signer.estimateGas(txRequest);
           gasCost = gasEstimate.mul(gasPrice);
         } catch (estimateError) {
           // 如果包含备注失败，估算无备注版本
@@ -555,7 +559,7 @@ class ETHTransferService {
             
             txRequest.data = "0x";
             canIncludeMemo = false;
-            const gasEstimate = await signer.estimateGas(txRequest);
+            gasEstimate = await signer.estimateGas(txRequest);
             gasCost = gasEstimate.mul(gasPrice);
           } else {
             throw estimateError;
