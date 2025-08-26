@@ -433,7 +433,7 @@ function AppContent() {
         txHash: result.txHash,
         amount: result.amount,
         token: 'ETH',
-        toAddress: result.toAddress,
+        toAddress: result.toAddress || values.toAddress,
         fromAddress: result.fromAddress,
         inputData: result.inputData || '0x',
         blockNumber: result.blockNumber,
@@ -446,7 +446,8 @@ function AppContent() {
         gasUsed: result.gasUsed
       });
 
-      message.success(`🎉 ETH转账成功！已发送到 ${result.toAddress.slice(0, 6)}...${result.toAddress.slice(-4)}` + (result.memoIncludedOnChain ? ' (备注已写入区块链)' : ''));
+      const toAddress = result.toAddress || values.toAddress || '未知地址';
+      message.success(`🎉 ETH转账成功！已发送到 ${toAddress.slice(0, 6)}...${toAddress.slice(-4)}` + (result.memoIncludedOnChain ? ' (备注已写入区块链)' : ''));
       ethTransferForm.resetFields();
 
       // 更新余额
@@ -501,7 +502,7 @@ function AppContent() {
         txHash: result.txHash,
         amount: result.amount,
         token: 'USDT',
-        toAddress: result.toAddress,
+        toAddress: result.toAddress || values.toAddress,
         fromAddress: account,
         inputData: result.inputData || result.transaction?.data || '0x',
         blockNumber: result.receipt?.blockNumber,
@@ -509,7 +510,8 @@ function AppContent() {
         gasUsed: result.receipt.gasUsed.toString()
       });
 
-      message.success(`🎉 USDT转账成功！已发送到 ${result.toAddress.slice(0, 6)}...${result.toAddress.slice(-4)}`);
+      const toAddress = result.toAddress || values.toAddress || '未知地址';
+      message.success(`🎉 USDT转账成功！已发送到 ${toAddress.slice(0, 6)}...${toAddress.slice(-4)}`);
       usdtTransferForm.resetFields();
 
       // 更新余额
@@ -719,7 +721,8 @@ function AppContent() {
         gasUsed: result.gasUsed
       });
 
-      message.success(`🎉 日志上链成功！合约地址: ${result.contractAddress.slice(0, 6)}...${result.contractAddress.slice(-4)}`);
+      const contractAddress = result.contractAddress || '未知合约';
+      message.success(`🎉 日志上链成功！合约地址: ${contractAddress.slice(0, 6)}...${contractAddress.slice(-4)}`);
       logUploadForm.resetFields();
 
       // 获取最新交易记录
