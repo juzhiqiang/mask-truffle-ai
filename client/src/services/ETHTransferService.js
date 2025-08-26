@@ -111,7 +111,6 @@ class ETHTransferService {
         const address = await this.signer.getAddress();
         console.log("ETH Signer connected:", address);
       } catch (error) {
-        console.error("Failed to get signer:", error);
         throw new Error("获取钱包签名器失败：" + error.message);
       }
     }
@@ -374,17 +373,7 @@ class ETHTransferService {
         progressCallback(75, "正在发送ETH转账交易，等待钱包签名...");
       }
 
-      console.log("Sending ETH transfer:", {
-        from: fromAddress,
-        to: toAddress,
-        amount: amount + " ETH",
-        memo: actualMemo || "No memo",
-        inputData: inputData,
-        inputDataSize: ethers.utils.hexDataLength(inputData) + " bytes",
-        gasLimit: txRequest.gasLimit.toString(),
-        transactionType: useEIP1559 ? "EIP-1559" : "Legacy",
-        memoOnChain: canIncludeMemo
-      });
+      console.log("Sending ETH transfer:", txRequest);
 
       // 发送交易 - 这里会调起钱包签名
       const tx = await signer.sendTransaction(txRequest);
