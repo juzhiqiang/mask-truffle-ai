@@ -112,6 +112,18 @@ class InfuraService {
         this.getTransactionReceipt(txHash, chainId),
       ]);
 
+      // 获取区块信息以获取时间戳
+      let timestamp = null;
+      if (receipt && receipt.blockNumber) {
+        try {
+          const provider = this.getProvider(chainId);
+          const block = await provider.getBlock(receipt.blockNumber);
+          timestamp = block.timestamp;
+        } catch (error) {
+          console.warn('获取区块时间戳失败:', error);
+        }
+      }
+
       // 解析Input Data中的备注
       const memo = this.parseTransactionMemo(transaction.data);
 
@@ -119,6 +131,7 @@ class InfuraService {
         transaction,
         receipt,
         memo,
+        timestamp,
         hasInputData: transaction.data && transaction.data !== "0x",
         from: transaction.from,
         to: transaction.to,
@@ -131,6 +144,7 @@ class InfuraService {
           : "pending",
         blockNumber: receipt ? receipt.blockNumber : null,
         confirmations: receipt ? receipt.confirmations : 0,
+        inputData: transaction.data || '0x'
       };
     } catch (error) {
       console.error("获取交易详情失败:", error);

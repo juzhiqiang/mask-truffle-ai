@@ -143,8 +143,8 @@ function AppContent() {
         // 加载交易记录
         loadTransactionRecords();
 
-        // 获取当前钱包最新的2条链上交易记录
-        fetchLatestOnChainTransactions(walletAccount);
+        // 注释掉自动获取链上交易记录，改为用户手动搜索触发
+        // fetchLatestOnChainTransactions(walletAccount);
 
       } else {
         // 钱包断开连接
@@ -267,6 +267,90 @@ function AppContent() {
       message.error('加载链上数据失败: ' + error.message);
     } finally {
       setGraphDataLoading(false);
+    }
+  };
+
+  // 通过交易哈希查询链上ETH转账数据
+  const searchETHTransferByHash = async (txHash) => {
+    if (!txHash || txHash.length < 10) {
+      message.warning('请输入有效的交易哈希');
+      return;
+    }
+
+    if (!infuraService.validateInfuraConfig()) {
+      message.error('Infura服务未配置，无法查询链上数据');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      console.log('查询交易哈希:', txHash);
+      
+      // 获取当前网络信息
+      const currentNetwork = await ethTransferService.getCurrentNetwork();
+      
+      // 使用 Infura 服务查询交易详情
+      const txData = await infuraService.getTransactionWithMemo(txHash, currentNetwork?.chainId);
+      
+      if (txData) {
+        // 处理时间戳 - 区块时间戳是秒级，需要转换为毫秒
+        const timestamp = txData.timestamp ? txData.timestamp * 1000 : Date.now();
+        
+        // 转换为ETH转账记录格式，包含完整的交易详情
+        const ethTransferRecord = {
+          id: txHash,
+          dataType: 'transfer',
+          txHash: txHash,
+          amount: txData.value || '0',
+          token: 'ETH',
+          toAddress: txData.to,
+          fromAddress: txData.from,
+          blockNumber: txData.blockNumber,
+          status: txData.status === 'success' ? 'success' : 'failed',
+          gasUsed: txData.gasUsed?.toString(),
+          onChainMemo: txData.memo,
+          timestamp: new Date(timestamp).toISOString(),
+          date: new Date(timestamp).toLocaleString(),
+          inputData: txData.inputData || '0x',
+          value: txData.value || '0',
+          customData: {
+            memo: txData.memo,
+            isContract: false,
+            // 添加完整的交易详情
+            messageType: 'ETH Transfer',
+            transactionHash: txHash,
+            onChainContent: txData.memo || 'ETH Transfer',
+            transactionTime: new Date(timestamp).toLocaleString(),
+            transactionFee: txData.receipt ? 
+              (parseFloat(ethers.utils.formatEther(txData.receipt.gasUsed.mul(txData.transaction.gasPrice))).toFixed(6) + ' ETH') : 
+              '0 ETH',
+            gasPrice: txData.transaction?.gasPrice ? 
+              ethers.utils.formatUnits(txData.transaction.gasPrice, 'gwei') + ' Gwei' : 
+              '0 Gwei',
+            gasUsed: txData.gasUsed || '0',
+            gasLimit: txData.transaction?.gasLimit?.toString() || '0',
+            confirmations: txData.confirmations || 0
+          }
+        };
+
+        // 与现有记录合并，如果记录已存在则移到最前面
+        setEthTransferRecords(prev => {
+          // 移除可能已存在的相同交易哈希记录（避免重复）
+          const filteredPrev = prev.filter(record => record.txHash !== txHash);
+          // 将新记录放到最前面
+          return [ethTransferRecord, ...filteredPrev];
+        });
+        message.success('找到该交易哈希的链上数据');
+      } else {
+        // 如果没找到数据，不清空现有记录，只显示提示
+        message.info('未找到该交易哈希的链上数据');
+      }
+    } catch (error) {
+      console.error('交易哈希搜索失败:', error);
+      // 出现错误时不清空现有记录，只显示错误信息
+      message.error('搜索失败: ' + error.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -546,7 +630,7 @@ function AppContent() {
     setLogUploadRecords(updatedRecords);
   };
 
-  // 从链上获取当前钱包最新的2条交易记录
+  // 从链上获取当前钱包最新的2条ETH转账记录
   const fetchLatestOnChainTransactions = async (walletAddress) => {
     if (!walletAddress) {
       console.log('没有钱包地址，跳过链上交易获取');
@@ -554,49 +638,104 @@ function AppContent() {
     }
 
     try {
-      console.log('开始获取钱包最新交易记录:', walletAddress);
+      console.log('开始获取钱包最新ETH转账记录:', walletAddress);
       
-      // 获取最新的链上交易记录
-      const latestTransactions = await ethTransferService.getLatestTransactions(walletAddress, 2);
-      
-      if (latestTransactions && latestTransactions.length > 0) {
-        console.log(`获取到 ${latestTransactions.length} 条最新交易记录`);
-        
-        // 转换为应用内的记录格式
-        const formattedRecords = latestTransactions.map(tx => ({
-          dataType: 'transfer',
-          txHash: tx.hash,
-          amount: tx.value,
-          token: tx.token || 'ETH',
-          toAddress: tx.to,
-          fromAddress: tx.from,
-          inputData: tx.inputData || '0x',
-          blockNumber: tx.blockNumber,
-          status: tx.status === 1 ? 'success' : 'failed',
-          gasUsed: tx.gasUsed?.toString(),
-          onChainMemo: tx.memo,
-          id: tx.hash,
-          timestamp: new Date(tx.timestamp * 1000).toISOString(),
-          date: new Date(tx.timestamp * 1000).toLocaleString()
-        }));
+      // 使用Infura服务更高效地获取交易记录
+      // 注意：这里我们使用一个简化的方法，实际可能需要使用Etherscan API
+      // 为了演示，我们先尝试获取最新几个区块的交易
+      const currentNetwork = await ethTransferService.getCurrentNetwork();
+      if (!currentNetwork) {
+        console.log('未获取到网络信息，跳过自动加载');
+        return;
+      }
 
-        // 按token类型分别存储到对应的记录数组中
-        const ethRecords = formattedRecords.filter(record => record.token === 'ETH');
-        const usdtRecords = formattedRecords.filter(record => record.token === 'USDT');
-        
-        if (ethRecords.length > 0) {
-          setEthTransferRecords(ethRecords);
-          console.log('ETH链上交易记录已更新');
+      // 获取最新区块号
+      const provider = await ethTransferService.getProvider();
+      const latestBlock = await provider.getBlockNumber();
+      console.log('当前最新区块:', latestBlock);
+
+      const ethRecords = [];
+      let blocksChecked = 0;
+      const maxBlocksToCheck = 50; // 只检查最近50个区块，提高效率
+
+      // 从最新区块开始向前检查
+      for (let blockNum = latestBlock; blockNum > latestBlock - maxBlocksToCheck && ethRecords.length < 2; blockNum--) {
+        try {
+          const block = await provider.getBlockWithTransactions(blockNum);
+          
+          if (block && block.transactions) {
+            // 查找与该钱包地址相关的ETH转账
+            for (const tx of block.transactions) {
+              if (ethRecords.length >= 2) break;
+              
+              if ((tx.from?.toLowerCase() === walletAddress.toLowerCase() || 
+                   tx.to?.toLowerCase() === walletAddress.toLowerCase()) &&
+                  tx.value && !tx.value.isZero()) {
+                
+                // 获取交易回执
+                try {
+                  const receipt = await provider.getTransactionReceipt(tx.hash);
+                  
+                  const ethRecord = {
+                    dataType: 'transfer',
+                    txHash: tx.hash,
+                    amount: ethers.utils.formatEther(tx.value),
+                    token: 'ETH',
+                    toAddress: tx.to,
+                    fromAddress: tx.from,
+                    inputData: tx.data || '0x',
+                    blockNumber: tx.blockNumber,
+                    status: receipt?.status === 1 ? 'success' : 'failed',
+                    gasUsed: receipt?.gasUsed?.toString() || '0',
+                    onChainMemo: tx.data && tx.data !== '0x' ? 'Has Input Data' : '',
+                    id: tx.hash,
+                    timestamp: new Date(block.timestamp * 1000).toISOString(),
+                    date: new Date(block.timestamp * 1000).toLocaleString(),
+                    value: ethers.utils.formatEther(tx.value),
+                    customData: {
+                      memo: tx.data && tx.data !== '0x' ? 'Has Input Data' : '',
+                      isContract: false,
+                      messageType: 'ETH Transfer',
+                      transactionHash: tx.hash,
+                      onChainContent: tx.data && tx.data !== '0x' ? 'ETH Transfer with Data' : 'ETH Transfer',
+                      transactionTime: new Date(block.timestamp * 1000).toLocaleString(),
+                      transactionFee: receipt ? 
+                        (parseFloat(ethers.utils.formatEther(receipt.gasUsed.mul(tx.gasPrice))).toFixed(6) + ' ETH') : 
+                        '0 ETH',
+                      gasPrice: tx.gasPrice ? 
+                        ethers.utils.formatUnits(tx.gasPrice, 'gwei') + ' Gwei' : 
+                        '0 Gwei',
+                      gasUsed: receipt?.gasUsed?.toString() || '0',
+                      gasLimit: tx.gasLimit?.toString() || '0'
+                    }
+                  };
+
+                  ethRecords.push(ethRecord);
+                } catch (receiptError) {
+                  console.warn('获取交易回执失败:', receiptError);
+                }
+              }
+            }
+          }
+          blocksChecked++;
+        } catch (blockError) {
+          console.warn(`获取区块 ${blockNum} 失败:`, blockError);
         }
-        if (usdtRecords.length > 0) {
-          setUsdtTransferRecords(usdtRecords);
-          console.log('USDT链上交易记录已更新');
-        }
+      }
+
+      if (ethRecords.length > 0) {
+        console.log(`获取到 ${ethRecords.length} 条最新ETH转账记录`);
+        setEthTransferRecords(ethRecords);
+        console.log('ETH链上交易记录已自动加载');
       } else {
-        console.log('没有找到最新的交易记录');
+        console.log('在最近的区块中没有找到ETH转账记录');
+        // 设置空数组，清除可能存在的旧记录
+        setEthTransferRecords([]);
       }
     } catch (error) {
-      console.error('获取链上交易记录失败:', error);
+      console.error('获取链上ETH转账记录失败:', error);
+      // 设置空数组，确保界面状态正确
+      setEthTransferRecords([]);
     }
   };
 
@@ -608,7 +747,7 @@ function AppContent() {
     setLogUploadRecords([]);
   };
 
-  // 过滤ETH转账记录
+  // ETH转账记录 - 不再进行前端过滤，交易哈希搜索通过链上查询处理
   const filteredEthRecords = React.useMemo(() => {
     const allRecords = [...ethTransferRecords];
     
@@ -619,22 +758,8 @@ function AppContent() {
       return timeB - timeA;
     });
     
-    if (!searchText) return allRecords;
-    
-    const searchLower = searchText.toLowerCase();
-    return allRecords.filter(record => {
-      return (
-        record.token?.toLowerCase().includes(searchLower) ||
-        record.toAddress?.toLowerCase().includes(searchLower) ||
-        record.fromAddress?.toLowerCase().includes(searchLower) ||
-        record.txHash?.toLowerCase().includes(searchLower) ||
-        record.amount?.toString().includes(searchLower) ||
-        record.status?.toLowerCase().includes(searchLower) ||
-        record.customData?.memo?.toLowerCase().includes(searchLower) ||
-        record.onChainMemo?.toLowerCase().includes(searchLower)
-      );
-    });
-  }, [ethTransferRecords, searchText]);
+    return allRecords;
+  }, [ethTransferRecords]);
 
   // 过滤USDT转账记录
   const filteredUsdtRecords = React.useMemo(() => {
@@ -744,24 +869,44 @@ function AppContent() {
         updateProgress
       );
 
-      // 保存交易记录
-      saveEthTransferRecord({
+      // 保存交易记录 - 格式与查询时保持一致
+      const ethRecord = {
         dataType: 'transfer',
         txHash: result.txHash,
         amount: result.amount,
+        value: result.amount,
         token: 'ETH',
         toAddress: result.toAddress || values.toAddress,
         fromAddress: result.fromAddress,
         inputData: result.inputData || '0x',
         blockNumber: result.blockNumber,
+        status: result.status,
+        gasUsed: result.gasUsed,
+        onChainMemo: values.memo || '',
+        id: result.txHash,
+        timestamp: new Date().toISOString(),
+        date: new Date().toLocaleString(),
         customData: { 
           memo: values.memo || '',
           memoIncludedOnChain: result.memoIncludedOnChain || false,
-          isContract: result.isContract || false
-        },
-        status: result.status,
-        gasUsed: result.gasUsed
-      });
+          isContract: result.isContract || false,
+          // 添加与查询格式一致的完整交易详情
+          messageType: 'ETH Transfer',
+          value: result.amount,
+          toAddress: result.toAddress || values.toAddress,
+          fromAddress: result.fromAddress,
+          transactionHash: result.txHash,
+          blockNumber: result.blockNumber,
+          onChainContent: values.memo || 'ETH Transfer',
+          transactionTime: new Date().toLocaleString(),
+          transactionFee: '计算中...',
+          gasPrice: '计算中...',
+          gasUsed: result.gasUsed || '0',
+          gasLimit: '0'
+        }
+      };
+
+      saveEthTransferRecord(ethRecord);
 
       const toAddress = result.toAddress || values.toAddress || '未知地址';
       message.success(`🎉 ETH转账成功！已发送到 ${toAddress.slice(0, 6)}...${toAddress.slice(-4)}` + (result.memoIncludedOnChain ? ' (备注已写入区块链)' : ''));
@@ -889,14 +1034,14 @@ function AppContent() {
               name="amount"
               rules={[
                 { required: true, message: '请输入转账金额' },
-                { type: 'number', min: 0.001, message: '最小转账金额为0.001 ETH' }
+                { type: 'number', min: 0.00001, message: '最小转账金额为0.00001 ETH' }
               ]}
             >
               <InputNumber
                 style={{ width: '100%' }}
-                placeholder="0.001"
-                min={0.001}
-                step={0.001}
+                placeholder="0.00001"
+                min={0.00001}
+                step={0.00001}
                 precision={6}
                 autoComplete="off"
                 controls={false}
@@ -1290,10 +1435,10 @@ function AppContent() {
             >
               <div style={{ marginBottom: 16 }}>
                 <Input.Search
-                  placeholder="搜索ETH转账记录"
-                  value={searchText}
-                  onChange={(e) => setSearchText(e.target.value)}
-                  onSearch={(value) => setSearchText(value)}
+                  placeholder="输入交易哈希搜索ETH转账记录"
+                  onSearch={searchETHTransferByHash}
+                  enterButton="搜索交易"
+                  loading={loading}
                   allowClear
                   style={{ width: '100%' }}
                 />
@@ -1419,6 +1564,68 @@ function AppContent() {
         >
           {selectedRecord && (
             <div>
+              {/* ETH转账记录详情显示 */}
+              {selectedRecord.dataType === 'transfer' && selectedRecord.customData && (
+                <>
+                  <Divider>ETH转账详情</Divider>
+                  <Row gutter={16}>
+                    <Col span={12}>
+                      {selectedRecord.customData.messageType && (
+                        <Paragraph><strong>消息类型:</strong> {selectedRecord.customData.messageType}</Paragraph>
+                      )}
+                      {selectedRecord.customData.value || selectedRecord.value && (
+                        <Paragraph><strong>转账金额:</strong> {selectedRecord.customData.value || selectedRecord.value} ETH</Paragraph>
+                      )}
+                      {selectedRecord.customData.toAddress || selectedRecord.toAddress && (
+                        <Paragraph><strong>目标地址:</strong> {selectedRecord.customData.toAddress || selectedRecord.toAddress}</Paragraph>
+                      )}
+                      {selectedRecord.customData.fromAddress || selectedRecord.fromAddress && (
+                        <Paragraph><strong>来源地址:</strong> {selectedRecord.customData.fromAddress || selectedRecord.fromAddress}</Paragraph>
+                      )}
+                    </Col>
+                    <Col span={12}>
+                      {selectedRecord.date && (
+                        <Paragraph><strong>交易时间:</strong> {selectedRecord.date}</Paragraph>
+                      )}
+                      {selectedRecord.customData.transactionFee && selectedRecord.customData.transactionFee !== '0 ETH' && (
+                        <Paragraph><strong>交易费用:</strong> {selectedRecord.customData.transactionFee}</Paragraph>
+                      )}
+                      {selectedRecord.customData.gasPrice && selectedRecord.customData.gasPrice !== '0 Gwei' && (
+                        <Paragraph><strong>Gas价格:</strong> {selectedRecord.customData.gasPrice}</Paragraph>
+                      )}
+                      {selectedRecord.customData.gasUsed && (
+                        <Paragraph><strong>Gas使用量:</strong> {selectedRecord.customData.gasUsed}</Paragraph>
+                      )}
+                      {selectedRecord.customData.gasLimit && (
+                        <Paragraph><strong>Gas限制:</strong> {selectedRecord.customData.gasLimit}</Paragraph>
+                      )}
+                    </Col>
+                  </Row>
+
+                  {/* 交易哈希和区块号 */}
+                  <Paragraph><strong>交易哈希:</strong> {selectedRecord.customData.transactionHash || selectedRecord.txHash}</Paragraph>
+                  <Paragraph><strong>区块号:</strong> {selectedRecord.customData.blockNumber || selectedRecord.blockNumber}</Paragraph>
+
+                  {/* 链上内容 */}
+                  {selectedRecord.customData.onChainContent && (
+                    <Paragraph>
+                      <strong>链上内容:</strong>
+                      <br />
+                      {selectedRecord.customData.onChainContent}
+                    </Paragraph>
+                  )}
+
+                  {/* Input Data */}
+                  {selectedRecord.inputData && selectedRecord.inputData !== '0x' && (
+                    <Paragraph>
+                      <strong>Input Data:</strong>
+                      <br />
+                      {selectedRecord.inputData}
+                    </Paragraph>
+                  )}
+                </>
+              )}
+
               {/* 链上数据特殊显示 */}
               {selectedRecord.dataType === 'chaindata' && selectedRecord.customData && (
                 <>
