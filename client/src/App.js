@@ -32,7 +32,9 @@ function AppContent() {
   const [usdtBalance, setUsdtBalance] = useState('0');
   const [network, setNetwork] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [transactionRecords, setTransactionRecords] = useState([]);
+  const [ethTransferRecords, setEthTransferRecords] = useState([]);
+  const [usdtTransferRecords, setUsdtTransferRecords] = useState([]);
+  const [logUploadRecords, setLogUploadRecords] = useState([]);
   const [activeTab, setActiveTab] = useState('eth-transfer'); // 新增：追踪当前活动标签
   const [searchText, setSearchText] = useState(''); // 新增：搜索文本
   
@@ -41,6 +43,8 @@ function AppContent() {
   const [graphDataLoading, setGraphDataLoading] = useState(false);
   const [graphRecords, setGraphRecords] = useState([]);
   const [graphHealthStatus, setGraphHealthStatus] = useState(null);
+  const [txHashSearchResults, setTxHashSearchResults] = useState([]);
+  const [txHashSearchLoading, setTxHashSearchLoading] = useState(false);
   
   // 进度条状态
   const [progressVisible, setProgressVisible] = useState(false);
@@ -148,7 +152,9 @@ function AppContent() {
         setEthBalance('0');
         setUsdtBalance('0');
         setNetwork(null);
-        setTransactionRecords([]);
+        setEthTransferRecords([]);
+        setUsdtTransferRecords([]);
+        setLogUploadRecords([]);
       }
     } catch (error) {
       console.error('Account change error:', error);
@@ -182,11 +188,8 @@ function AppContent() {
         console.log('The Graph service initialized:', healthStatus);
         
         if (healthStatus.status === 'healthy') {
-          setGraphDataEnabled(true);
-          // 如果有用户账户，自动加载数据
-          if (account) {
-            await loadGraphData();
-          }
+          // 不自动启用，保持开关关闭状态，让用户主动选择
+          console.log('The Graph 服务可用，等待用户主动开启查询');
         }
       } else {
         setGraphDataEnabled(false);
@@ -212,22 +215,47 @@ function AppContent() {
       // 转换为应用内的记录格式
       const formattedRecords = userData.map(data => ({
         id: data.id,
+        logId: data.logId,
+        creator: data.creator,
         dataType: 'chaindata',
         token: data.dataType || 'DATA',
         amount: `Log ${data.logId}`,
-        toAddress: 'Chain Storage',
-        fromAddress: data.creator,
+        toAddress: data.toAddress || 'Chain Storage',
+        fromAddress: data.fromAddress || data.creator,
         txHash: data.txHash,
         blockNumber: data.blockNumber,
         status: 'success',
         date: data.date,
         timestamp: data.timestamp,
         onChainMemo: data.content,
+        value: data.value,
+        contractAddress: data.contractAddress,
+        inputData: data.inputData,
+        onChainContent: data.onChainContent,
+        transactionTime: data.transactionTime,
+        transactionFee: data.transactionFee,
+        gasPrice: data.gasPrice,
         customData: {
+          messageType: data.dataType, // 使用 dataType 作为 messageType
+          value: data.value,
+          toAddress: data.toAddress,
+          fromAddress: data.fromAddress,
+          transactionHash: data.txHash,
+          blockNumber: data.blockNumber,
+          contractAddress: data.contractAddress,
+          inputData: data.inputData,
+          onChainContent: data.onChainContent || data.content,
+          transactionTime: data.transactionTime,
+          transactionFee: data.transactionFee,
+          gasPrice: data.gasPrice,
+          gasUsed: data.gasUsed || '0',
+          gasLimit: data.gasLimit || '0',
+          // 保留其他字段用于兼容性
           logId: data.logId,
           dataType: data.dataType,
           content: data.content,
           dataHash: data.dataHash,
+          creator: data.creator,
           source: 'thegraph'
         }
       }));
@@ -241,7 +269,185 @@ function AppContent() {
     }
   };
 
-  // 刷新The Graph数据
+  // 查询刚上链的日志数据
+  const queryFreshChainData = async (txHash, logId) => {
+    if (!theGraphService.isAvailable()) {
+      console.log('The Graph 服务不可用，无法查询刚上链的数据');
+      return;
+    }
+
+    try {
+      console.log('查询刚上链的数据:', { txHash, logId });
+      
+      // 等待一小段时间让数据同步到 The Graph
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // 使用交易哈希查询刚上链的数据
+      const allData = await theGraphService.getAllDataStoredEvents(100, 0);
+      const freshData = allData.filter(data => 
+        data.txHash && data.txHash.toLowerCase() === txHash.toLowerCase()
+      );
+      
+      if (freshData.length > 0) {
+        console.log('找到刚上链的数据:', freshData);
+        
+        // 转换为应用内的记录格式
+        const formattedRecords = freshData.map(data => ({
+          id: data.id,
+          logId: data.logId,
+          creator: data.creator,
+          dataType: 'chaindata',
+          token: data.dataType || 'DATA',
+          amount: `Log ${data.logId}`,
+          toAddress: data.toAddress || 'Chain Storage',
+          fromAddress: data.fromAddress || data.creator,
+          txHash: data.txHash,
+          blockNumber: data.blockNumber,
+          status: 'success',
+          date: data.date,
+          timestamp: data.timestamp,
+          onChainMemo: data.content,
+          value: data.value,
+          contractAddress: data.contractAddress,
+          inputData: data.inputData,
+          onChainContent: data.onChainContent,
+          transactionTime: data.transactionTime,
+          transactionFee: data.transactionFee,
+          gasPrice: data.gasPrice,
+          customData: {
+            messageType: data.dataType, // 使用 dataType 作为 messageType
+            value: data.value,
+            toAddress: data.toAddress,
+            fromAddress: data.fromAddress,
+            transactionHash: data.txHash,
+            blockNumber: data.blockNumber,
+            contractAddress: data.contractAddress,
+            inputData: data.inputData,
+            onChainContent: data.onChainContent || data.content,
+            transactionTime: data.transactionTime,
+            transactionFee: data.transactionFee,
+            gasPrice: data.gasPrice,
+            gasUsed: data.gasUsed || '0',
+            gasLimit: data.gasLimit || '0',
+            // 保留其他字段用于兼容性
+            logId: data.logId,
+            dataType: data.dataType,
+            content: data.content,
+            dataHash: data.dataHash,
+            creator: data.creator,
+            source: 'thegraph'
+          }
+        }));
+
+        // 合并到现有的 graphRecords 中，去重
+        const existingHashes = new Set(graphRecords.map(r => r.txHash));
+        const newRecords = formattedRecords.filter(r => !existingHashes.has(r.txHash));
+        
+        if (newRecords.length > 0) {
+          setGraphRecords(prev => [...newRecords, ...prev]);
+          
+          // 如果 The Graph 查询还未开启，自动开启以显示刚上链的数据
+          if (!graphDataEnabled) {
+            setGraphDataEnabled(true);
+          }
+          
+          message.success('已从链上查询到刚上传的日志数据');
+        }
+      } else {
+        console.log('The Graph 中暂未找到刚上链的数据，可能需要更多时间同步');
+      }
+    } catch (error) {
+      console.error('查询刚上链的数据失败:', error);
+    }
+  };
+  const searchByTransactionHash = async (txHash) => {
+    if (!txHash || txHash.length < 10) {
+      message.warning('请输入有效的交易哈希');
+      return;
+    }
+
+    if (!theGraphService.isAvailable()) {
+      message.error('The Graph 服务不可用，请先连接支持的网络');
+      return;
+    }
+
+    setGraphDataLoading(true);
+    try {
+      // 使用 The Graph 搜索所有数据，然后筛选匹配的交易哈希
+      const allData = await theGraphService.getAllDataStoredEvents(1000, 0);
+      const matchedData = allData.filter(data => 
+        data.txHash && data.txHash.toLowerCase().includes(txHash.toLowerCase())
+      );
+      
+      if (matchedData.length > 0) {
+        // 转换为应用内的记录格式并添加到 graphRecords
+        const formattedRecords = matchedData.map(data => ({
+          id: data.id,
+          logId: data.logId,
+          creator: data.creator,
+          dataType: 'chaindata',
+          token: data.dataType || 'DATA',
+          amount: `Log ${data.logId}`,
+          toAddress: data.toAddress || 'Chain Storage',
+          fromAddress: data.fromAddress || data.creator,
+          txHash: data.txHash,
+          blockNumber: data.blockNumber,
+          status: 'success',
+          date: data.date,
+          timestamp: data.timestamp,
+          onChainMemo: data.content,
+          value: data.value,
+          contractAddress: data.contractAddress,
+          inputData: data.inputData,
+          onChainContent: data.onChainContent,
+          transactionTime: data.transactionTime,
+          transactionFee: data.transactionFee,
+          gasPrice: data.gasPrice,
+          customData: {
+            messageType: data.dataType, // 使用 dataType 作为 messageType
+            value: data.value,
+            toAddress: data.toAddress,
+            fromAddress: data.fromAddress,
+            transactionHash: data.txHash,
+            blockNumber: data.blockNumber,
+            contractAddress: data.contractAddress,
+            inputData: data.inputData,
+            onChainContent: data.onChainContent || data.content,
+            transactionTime: data.transactionTime,
+            transactionFee: data.transactionFee,
+            gasPrice: data.gasPrice,
+            gasUsed: data.gasUsed || '0',
+            gasLimit: data.gasLimit || '0',
+            // 保留其他字段用于兼容性
+            logId: data.logId,
+            dataType: data.dataType,
+            content: data.content,
+            dataHash: data.dataHash,
+            creator: data.creator,
+            source: 'thegraph'
+          }
+        }));
+
+        // 合并到现有的 graphRecords 中，去重
+        const existingHashes = new Set(graphRecords.map(r => r.txHash));
+        const newRecords = formattedRecords.filter(r => !existingHashes.has(r.txHash));
+        
+        if (newRecords.length > 0) {
+          setGraphRecords(prev => [...newRecords, ...prev]);
+          message.success(`找到 ${matchedData.length} 条相关的链上数据记录`);
+        } else {
+          message.info('该交易哈希的数据已经在记录中');
+        }
+      } else {
+        message.info('未找到相关的链上数据记录');
+      }
+    } catch (error) {
+      console.error('交易哈希搜索失败:', error);
+      message.error('搜索失败: ' + error.message);
+    } finally {
+      setGraphDataLoading(false);
+    }
+  };
   const refreshGraphData = async () => {
     await loadGraphData();
     message.success('链上数据已刷新');
@@ -251,8 +457,10 @@ function AppContent() {
   const handleGraphDataToggle = async (enabled) => {
     setGraphDataEnabled(enabled);
     if (enabled && account) {
+      // 用户主动开启时才查询数据
       await loadGraphData();
     } else {
+      // 关闭时清空数据
       setGraphRecords([]);
     }
   };
@@ -302,18 +510,46 @@ function AppContent() {
     return record;
   };
 
-  // 保存交易记录（仅保存到状态）
-  const saveTransactionRecord = (record) => {
-    console.log('保存新的交易记录:', record);
+  // 保存ETH转账记录
+  const saveEthTransferRecord = (record) => {
+    console.log('保存新的ETH转账记录:', record);
     const newRecord = {
       ...record,
       id: Date.now().toString(),
       timestamp: new Date().toISOString(),
       date: new Date().toLocaleString()
     };
-    const updatedRecords = [newRecord, ...transactionRecords];
-    console.log('更新后的记录总数:', updatedRecords.length);
-    setTransactionRecords(updatedRecords);
+    const updatedRecords = [newRecord, ...ethTransferRecords];
+    console.log('更新后的ETH转账记录总数:', updatedRecords.length);
+    setEthTransferRecords(updatedRecords);
+  };
+
+  // 保存USDT转账记录
+  const saveUsdtTransferRecord = (record) => {
+    console.log('保存新的USDT转账记录:', record);
+    const newRecord = {
+      ...record,
+      id: Date.now().toString(),
+      timestamp: new Date().toISOString(),
+      date: new Date().toLocaleString()
+    };
+    const updatedRecords = [newRecord, ...usdtTransferRecords];
+    console.log('更新后的USDT转账记录总数:', updatedRecords.length);
+    setUsdtTransferRecords(updatedRecords);
+  };
+
+  // 保存日志上链记录
+  const saveLogUploadRecord = (record) => {
+    console.log('保存新的日志上链记录:', record);
+    const newRecord = {
+      ...record,
+      id: Date.now().toString(),
+      timestamp: new Date().toISOString(),
+      date: new Date().toLocaleString()
+    };
+    const updatedRecords = [newRecord, ...logUploadRecords];
+    console.log('更新后的日志上链记录总数:', updatedRecords.length);
+    setLogUploadRecords(updatedRecords);
   };
 
   // 从链上获取当前钱包最新的2条交易记录
@@ -350,8 +586,18 @@ function AppContent() {
           date: new Date(tx.timestamp * 1000).toLocaleString()
         }));
 
-        setTransactionRecords(formattedRecords);
-        console.log('链上交易记录已更新到状态中');
+        // 按token类型分别存储到对应的记录数组中
+        const ethRecords = formattedRecords.filter(record => record.token === 'ETH');
+        const usdtRecords = formattedRecords.filter(record => record.token === 'USDT');
+        
+        if (ethRecords.length > 0) {
+          setEthTransferRecords(ethRecords);
+          console.log('ETH链上交易记录已更新');
+        }
+        if (usdtRecords.length > 0) {
+          setUsdtTransferRecords(usdtRecords);
+          console.log('USDT链上交易记录已更新');
+        }
       } else {
         console.log('没有找到最新的交易记录');
       }
@@ -363,16 +609,14 @@ function AppContent() {
   // 初始化时不加载本地缓存数据
   const loadTransactionRecords = async () => {
     console.log('初始化交易记录状态（不从本地缓存加载）');
-    setTransactionRecords([]);
+    setEthTransferRecords([]);
+    setUsdtTransferRecords([]);
+    setLogUploadRecords([]);
   };
 
-  // 过滤交易记录 - 合并本地记录和The Graph数据
-  const filteredTransactionRecords = React.useMemo(() => {
-    // 合并本地记录和Graph记录
-    const allRecords = [...transactionRecords];
-    if (graphDataEnabled) {
-      allRecords.push(...graphRecords);
-    }
+  // 过滤ETH转账记录
+  const filteredEthRecords = React.useMemo(() => {
+    const allRecords = [...ethTransferRecords];
     
     // 按时间戳排序（最新的在前）
     allRecords.sort((a, b) => {
@@ -393,12 +637,91 @@ function AppContent() {
         record.amount?.toString().includes(searchLower) ||
         record.status?.toLowerCase().includes(searchLower) ||
         record.customData?.memo?.toLowerCase().includes(searchLower) ||
-        record.onChainMemo?.toLowerCase().includes(searchLower) ||
-        record.customData?.content?.toLowerCase().includes(searchLower) ||
-        record.customData?.dataType?.toLowerCase().includes(searchLower)
+        record.onChainMemo?.toLowerCase().includes(searchLower)
       );
     });
-  }, [transactionRecords, graphRecords, searchText, graphDataEnabled]);
+  }, [ethTransferRecords, searchText]);
+
+  // 过滤USDT转账记录
+  const filteredUsdtRecords = React.useMemo(() => {
+    const allRecords = [...usdtTransferRecords];
+    
+    // 按时间戳排序（最新的在前）
+    allRecords.sort((a, b) => {
+      const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+      const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+      return timeB - timeA;
+    });
+    
+    if (!searchText) return allRecords;
+    
+    const searchLower = searchText.toLowerCase();
+    return allRecords.filter(record => {
+      return (
+        record.token?.toLowerCase().includes(searchLower) ||
+        record.toAddress?.toLowerCase().includes(searchLower) ||
+        record.fromAddress?.toLowerCase().includes(searchLower) ||
+        record.txHash?.toLowerCase().includes(searchLower) ||
+        record.amount?.toString().includes(searchLower) ||
+        record.status?.toLowerCase().includes(searchLower) ||
+        record.customData?.memo?.toLowerCase().includes(searchLower) ||
+        record.onChainMemo?.toLowerCase().includes(searchLower)
+      );
+    });
+  }, [usdtTransferRecords, searchText]);
+
+  // 过滤日志上链记录
+  const filteredLogRecords = React.useMemo(() => {
+    const allRecords = [...logUploadRecords];
+    
+    // 按时间戳排序（最新的在前）
+    allRecords.sort((a, b) => {
+      const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+      const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+      return timeB - timeA;
+    });
+    
+    if (!searchText) return allRecords;
+    
+    const searchLower = searchText.toLowerCase();
+    return allRecords.filter(record => {
+      return (
+        record.logType?.toLowerCase().includes(searchLower) ||
+        record.logData?.toLowerCase().includes(searchLower) ||
+        record.txHash?.toLowerCase().includes(searchLower) ||
+        record.status?.toLowerCase().includes(searchLower) ||
+        record.contractAddress?.toLowerCase().includes(searchLower)
+      );
+    });
+  }, [logUploadRecords, searchText]);
+
+  // 过滤链上数据记录 - 仅显示 The Graph 查询的真实链上数据
+  const filteredChainDataRecords = React.useMemo(() => {
+    // 只使用 The Graph 数据，不包含本地日志记录
+    const allRecords = graphDataEnabled ? [...graphRecords] : [];
+    
+    // 按时间戳排序（最新的在前）
+    allRecords.sort((a, b) => {
+      const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+      const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+      return timeB - timeA;
+    });
+    
+    if (!searchText) return allRecords;
+    
+    const searchLower = searchText.toLowerCase();
+    return allRecords.filter(record => {
+      return (
+        record.customData?.content?.toLowerCase().includes(searchLower) ||
+        record.customData?.dataType?.toLowerCase().includes(searchLower) ||
+        record.txHash?.toLowerCase().includes(searchLower) ||
+        record.fromAddress?.toLowerCase().includes(searchLower) ||
+        record.customData?.logId?.toString().includes(searchLower) ||
+        record.contractAddress?.toLowerCase().includes(searchLower) ||
+        record.content?.toLowerCase().includes(searchLower)
+      );
+    });
+  }, [graphRecords, searchText, graphDataEnabled]);
 
   // 组件挂载时加载数据
   useEffect(() => {
@@ -428,7 +751,7 @@ function AppContent() {
       );
 
       // 保存交易记录
-      saveTransactionRecord({
+      saveEthTransferRecord({
         dataType: 'transfer',
         txHash: result.txHash,
         amount: result.amount,
@@ -497,7 +820,7 @@ function AppContent() {
       );
 
       // 保存交易记录
-      saveTransactionRecord({
+      saveUsdtTransferRecord({
         dataType: 'transfer',
         txHash: result.txHash,
         amount: result.amount,
@@ -708,7 +1031,7 @@ function AppContent() {
       );
 
       // 保存记录
-      saveTransactionRecord({
+      saveLogUploadRecord({
         dataType: 'log',
         txHash: result.txHash,
         logType: values.logType || 'info',
@@ -724,6 +1047,11 @@ function AppContent() {
       const contractAddress = result.contractAddress || '未知合约';
       message.success(`🎉 日志上链成功！合约地址: ${contractAddress.slice(0, 6)}...${contractAddress.slice(-4)}`);
       logUploadForm.resetFields();
+
+      // 查询刚上链的数据并显示在链上数据记录中
+      if (result.txHash && result.logId) {
+        queryFreshChainData(result.txHash, result.logId);
+      }
 
       // 获取最新交易记录
       fetchLatestOnChainTransactions(account);
@@ -883,6 +1211,11 @@ function AppContent() {
       key: 'toAddress',
       render: (address, record) => {
         if (record.dataType === 'chaindata') {
+          // 显示实际的toAddress，如果没有则显示合约地址
+          const targetAddress = record.toAddress || record.contractAddress;
+          if (targetAddress && targetAddress !== 'Chain Storage') {
+            return `${targetAddress.slice(0, 10)}...${targetAddress.slice(-8)}`;
+          }
           return <span style={{ color: '#722ed1' }}>区块链存储</span>;
         }
         return address ? `${address.slice(0, 10)}...${address.slice(-8)}` : '-';
@@ -958,70 +1291,21 @@ function AppContent() {
 
         {/* 记录展示区域 - 独立于标签页 */}
         <Row gutter={24}>
-          <Col span={24}>
+          {/* ETH转账记录 */}
+          <Col span={8}>
             <Card 
-              title={<span><HistoryOutlined /> 转账记录</span>}
+              title={<span><SendOutlined /> ETH转账记录</span>}
               extra={
-                <Space>
-                  <Badge 
-                    count={filteredTransactionRecords.length} 
-                    showZero 
-                    style={{ backgroundColor: '#52c41a' }} 
-                  />
-                  {graphHealthStatus && (
-                    <Button
-                      size="small"
-                      icon={<ReloadOutlined />}
-                      loading={graphDataLoading}
-                      onClick={refreshGraphData}
-                      disabled={!graphDataEnabled}
-                    >
-                      刷新链上数据
-                    </Button>
-                  )}
-                </Space>
+                <Badge 
+                  count={filteredEthRecords.length} 
+                  showZero 
+                  style={{ backgroundColor: '#1890ff' }} 
+                />
               }
             >
-              {/* The Graph 数据控制区域 */}
-              {graphHealthStatus && (
-                <div style={{ marginBottom: 16 }}>
-                  <Alert
-                    message={
-                      <Space>
-                        <CloudDownloadOutlined />
-                        <span>The Graph 数据读取</span>
-                        <Switch
-                          size="small"
-                          checked={graphDataEnabled}
-                          onChange={handleGraphDataToggle}
-                          loading={graphDataLoading}
-                        />
-                        {graphHealthStatus.status === 'healthy' && (
-                          <Badge status="success" text="服务正常" />
-                        )}
-                        {graphHealthStatus.status === 'not_supported' && (
-                          <Badge status="warning" text="当前网络不支持" />
-                        )}
-                        {graphHealthStatus.status === 'error' && (
-                          <Badge status="error" text="服务异常" />
-                        )}
-                      </Space>
-                    }
-                    type={graphHealthStatus.status === 'healthy' ? 'success' : 'warning'}
-                    showIcon
-                    style={{ marginBottom: 8 }}
-                  />
-                  {graphDataEnabled && graphRecords.length > 0 && (
-                    <div style={{ fontSize: '12px', color: '#666', marginBottom: 8 }}>
-                      已加载 {graphRecords.length} 条链上数据记录
-                    </div>
-                  )}
-                </div>
-              )}
-              
               <div style={{ marginBottom: 16 }}>
                 <Input.Search
-                  placeholder="搜索交易记录（地址、哈希、金额、状态、链上数据等）"
+                  placeholder="搜索ETH转账记录"
                   value={searchText}
                   onChange={(e) => setSearchText(e.target.value)}
                   onSearch={(value) => setSearchText(value)}
@@ -1031,16 +1315,189 @@ function AppContent() {
               </div>
               <Table
                 columns={transactionColumns}
-                dataSource={filteredTransactionRecords}
+                dataSource={filteredEthRecords}
                 rowKey={(record) => record.id || record.txHash || Math.random()}
-                pagination={{ pageSize: 10, size: 'small' }}
-                scroll={{ x: 600 }}
+                pagination={{ pageSize: 5, size: 'small' }}
+                scroll={{ x: 400 }}
                 size="small"
-                loading={graphDataLoading}
+              />
+            </Card>
+          </Col>
+
+          {/* USDT转账记录 */}
+          <Col span={8}>
+            <Card 
+              title={<span><SendOutlined /> USDT转账记录</span>}
+              extra={
+                <Badge 
+                  count={filteredUsdtRecords.length} 
+                  showZero 
+                  style={{ backgroundColor: '#52c41a' }} 
+                />
+              }
+            >
+              <div style={{ marginBottom: 16 }}>
+                <Input.Search
+                  placeholder="搜索USDT转账记录"
+                  value={searchText}
+                  onChange={(e) => setSearchText(e.target.value)}
+                  onSearch={(value) => setSearchText(value)}
+                  allowClear
+                  style={{ width: '100%' }}
+                />
+              </div>
+              <Table
+                columns={transactionColumns}
+                dataSource={filteredUsdtRecords}
+                rowKey={(record) => record.id || record.txHash || Math.random()}
+                pagination={{ pageSize: 5, size: 'small' }}
+                scroll={{ x: 400 }}
+                size="small"
+              />
+            </Card>
+          </Col>
+
+          {/* 日志上链记录 */}
+          <Col span={8}>
+            <Card 
+              title={<span><FileTextOutlined /> 日志上链记录</span>}
+              extra={
+                <Badge 
+                  count={filteredLogRecords.length} 
+                  showZero 
+                  style={{ backgroundColor: '#faad14' }} 
+                />
+              }
+            >
+              <div style={{ marginBottom: 16 }}>
+                <Input.Search
+                  placeholder="搜索日志上链记录"
+                  value={searchText}
+                  onChange={(e) => setSearchText(e.target.value)}
+                  onSearch={(value) => setSearchText(value)}
+                  allowClear
+                  style={{ width: '100%' }}
+                />
+              </div>
+              <Table
+                columns={transactionColumns}
+                dataSource={filteredLogRecords}
+                rowKey={(record) => record.id || record.txHash || Math.random()}
+                pagination={{ pageSize: 5, size: 'small' }}
+                scroll={{ x: 400 }}
+                size="small"
               />
             </Card>
           </Col>
         </Row>
+
+        {/* 链上数据记录 - 仅显示 The Graph 查询的真实链上数据 */}
+        {graphHealthStatus && (
+          <Row gutter={24} style={{ marginTop: 24 }}>
+            <Col span={24}>
+              <Card 
+                title={<span><DatabaseOutlined /> 链上数据记录</span>}
+                extra={
+                  <Space>
+                    <Badge 
+                      count={filteredChainDataRecords.length} 
+                      showZero 
+                      style={{ backgroundColor: '#722ed1' }} 
+                    />
+                    {graphHealthStatus && (
+                      <Button
+                        size="small"
+                        icon={<ReloadOutlined />}
+                        loading={graphDataLoading}
+                        onClick={refreshGraphData}
+                        disabled={!graphDataEnabled}
+                      >
+                        刷新链上数据
+                      </Button>
+                    )}
+                  </Space>
+                }
+              >
+                {/* The Graph 数据控制区域 */}
+                {graphHealthStatus && (
+                  <div style={{ marginBottom: 16 }}>
+                    <Alert
+                      message={
+                        <Space>
+                          <CloudDownloadOutlined />
+                          <span>The Graph 历史数据查询</span>
+                          <Switch
+                            size="small"
+                            checked={graphDataEnabled}
+                            onChange={handleGraphDataToggle}
+                            loading={graphDataLoading}
+                          />
+                          {graphHealthStatus.status === 'healthy' && (
+                            <Badge status="success" text="服务正常 - 点击开关查询历史数据" />
+                          )}
+                          {graphHealthStatus.status === 'not_supported' && (
+                            <Badge status="warning" text="当前网络不支持" />
+                          )}
+                          {graphHealthStatus.status === 'error' && (
+                            <Badge status="error" text="服务异常" />
+                          )}
+                        </Space>
+                      }
+                      type={graphHealthStatus.status === 'healthy' ? 'info' : 'warning'}
+                      showIcon
+                      style={{ marginBottom: 8 }}
+                    />
+                    {graphDataEnabled && graphRecords.length > 0 && (
+                      <div style={{ fontSize: '12px', color: '#666', marginBottom: 8 }}>
+                        已加载 {graphRecords.length} 条 The Graph 数据记录
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 状态信息 */}
+                <div style={{ fontSize: '12px', color: '#666', marginBottom: 16 }}>
+                  <Space split={<span style={{ color: '#d9d9d9' }}>|</span>}>
+                    <span>The Graph 记录: {graphRecords.length} 条</span>
+                    <span>总计: {filteredChainDataRecords.length} 条</span>
+                  </Space>
+                </div>
+                
+                {/* 搜索区域 */}
+                <Row gutter={16} style={{ marginBottom: 16 }}>
+                  <Col span={12}>
+                    <Input.Search
+                      placeholder="搜索链上数据记录（内容、类型、哈希等）"
+                      value={searchText}
+                      onChange={(e) => setSearchText(e.target.value)}
+                      onSearch={(value) => setSearchText(value)}
+                      allowClear
+                    />
+                  </Col>
+                  <Col span={12}>
+                    <Input.Search
+                      placeholder="输入交易哈希搜索历史数据"
+                      onSearch={searchByTransactionHash}
+                      enterButton="搜索交易"
+                      loading={graphDataLoading}
+                      disabled={!theGraphService.isAvailable()}
+                    />
+                  </Col>
+                </Row>
+                
+                <Table
+                  columns={transactionColumns}
+                  dataSource={filteredChainDataRecords}
+                  rowKey={(record) => record.id || record.txHash || Math.random()}
+                  pagination={{ pageSize: 10, size: 'small' }}
+                  scroll={{ x: 600 }}
+                  size="small"
+                  loading={graphDataLoading}
+                />
+              </Card>
+            </Col>
+          </Row>
+        )}
 
         {/* 详情查看Modal */}
         <Modal
@@ -1052,154 +1509,88 @@ function AppContent() {
         >
           {selectedRecord && (
             <div>
-              <Divider>基本信息</Divider>
-              <Row gutter={16}>
-                <Col span={12}>
-                  <Paragraph><strong>类型:</strong> {selectedRecord.token || selectedRecord.dataType}</Paragraph>
-                  <Paragraph><strong>状态:</strong> 
-                    <Badge 
-                      status={selectedRecord.status === 'success' ? 'success' : 'error'} 
-                      text={selectedRecord.status === 'success' ? '成功' : '失败'} 
-                    />
-                  </Paragraph>
-                  <Paragraph><strong>时间:</strong> {selectedRecord.date}</Paragraph>
-                </Col>
-                <Col span={12}>
-                  {selectedRecord.amount && (
-                    <Paragraph><strong>金额:</strong> {selectedRecord.amount} {selectedRecord.token}</Paragraph>
-                  )}
-                  {selectedRecord.toAddress && (
-                    <Paragraph><strong>接收地址:</strong> {selectedRecord.toAddress}</Paragraph>
-                  )}
-                  {selectedRecord.fromAddress && (
-                    <Paragraph><strong>发送地址:</strong> {selectedRecord.fromAddress}</Paragraph>
-                  )}
-                </Col>
-              </Row>
-
-              <Divider>交易信息</Divider>
-              <Paragraph><strong>交易哈希:</strong> {selectedRecord.txHash}</Paragraph>
-              {selectedRecord.blockNumber && (
-                <Paragraph><strong>区块号:</strong> {selectedRecord.blockNumber}</Paragraph>
-              )}
-              {selectedRecord.gasUsed && (
-                <Paragraph><strong>Gas使用量:</strong> {selectedRecord.gasUsed}</Paragraph>
-              )}
-              {selectedRecord.dataType === 'transfer' && (
-                <Paragraph>
-                  <strong>Input Data:</strong>
-                  <br />
-                  <Text code style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: '12px' }}>
-                    {selectedRecord.inputData || '0x'}
-                  </Text>
-                </Paragraph>
-              )}
-              {/* 仅在非转账记录时显示合约信息 */}
-              {selectedRecord.dataType !== 'transfer' && selectedRecord.id && (
-                <Paragraph><strong>合约记录ID:</strong> #{selectedRecord.id}</Paragraph>
-              )}
-              {selectedRecord.dataType !== 'transfer' && selectedRecord.creator && (
-                <Paragraph><strong>创建者地址:</strong> {selectedRecord.creator}</Paragraph>
-              )}
-              {selectedRecord.dataType !== 'transfer' && selectedRecord.isActive !== undefined && (
-                <Paragraph>
-                  <strong>记录状态:</strong> 
-                  <Badge 
-                    status={selectedRecord.isActive ? 'success' : 'error'} 
-                    text={selectedRecord.isActive ? '活跃' : '已停用'} 
-                    style={{ marginLeft: 8 }}
-                  />
-                </Paragraph>
-              )}
-
               {/* 链上数据特殊显示 */}
               {selectedRecord.dataType === 'chaindata' && selectedRecord.customData && (
                 <>
                   <Divider>链上数据信息</Divider>
                   <Row gutter={16}>
                     <Col span={12}>
-                      <Paragraph><strong>数据ID:</strong> #{selectedRecord.customData.logId}</Paragraph>
-                      <Paragraph><strong>数据类型:</strong> {selectedRecord.customData.dataType}</Paragraph>
-                      <Paragraph><strong>数据哈希:</strong> 
-                        <Text code style={{ fontSize: '11px', wordBreak: 'break-all' }}>
-                          {selectedRecord.customData.dataHash}
-                        </Text>
-                      </Paragraph>
+                      {selectedRecord.customData.messageType && (
+                        <Paragraph><strong>消息类型:</strong> {selectedRecord.customData.messageType}</Paragraph>
+                      )}
+                      {selectedRecord.customData.value && (
+                        <Paragraph><strong>转账金额:</strong> {selectedRecord.customData.value} ETH</Paragraph>
+                      )}
+                      {selectedRecord.customData.toAddress && (
+                        <Paragraph><strong>目标地址:</strong> 
+                          <Text code style={{ fontSize: '11px', wordBreak: 'break-all' }}>
+                            {selectedRecord.customData.toAddress}
+                          </Text>
+                        </Paragraph>
+                      )}
+                      {selectedRecord.customData.fromAddress && (
+                        <Paragraph><strong>来源地址:</strong> 
+                          <Text code style={{ fontSize: '11px', wordBreak: 'break-all' }}>
+                            {selectedRecord.customData.fromAddress}
+                          </Text>
+                        </Paragraph>
+                      )}
+                      {selectedRecord.customData.contractAddress && (
+                        <Paragraph><strong>合约地址:</strong> 
+                          <Text code style={{ fontSize: '11px', wordBreak: 'break-all' }}>
+                            {selectedRecord.customData.contractAddress}
+                          </Text>
+                        </Paragraph>
+                      )}
                     </Col>
                     <Col span={12}>
-                      <Paragraph><strong>创建者:</strong> {selectedRecord.customData?.creator || selectedRecord.fromAddress}</Paragraph>
-                      <Paragraph><strong>数据源:</strong> 
-                        <Badge status="processing" text="The Graph" style={{ marginLeft: 8 }} />
-                      </Paragraph>
+                      {selectedRecord.customData.transactionTime && (
+                        <Paragraph><strong>交易时间:</strong> {selectedRecord.customData.transactionTime}</Paragraph>
+                      )}
+                      {selectedRecord.customData.transactionFee && selectedRecord.customData.transactionFee !== '0' && (
+                        <Paragraph><strong>交易费用:</strong> {selectedRecord.customData.transactionFee} ETH</Paragraph>
+                      )}
+                      {selectedRecord.customData.gasPrice && selectedRecord.customData.gasPrice !== '0' && (
+                        <Paragraph><strong>Gas价格:</strong> {selectedRecord.customData.gasPrice}</Paragraph>
+                      )}
+                      {selectedRecord.customData.gasUsed && (
+                        <Paragraph><strong>Gas使用量:</strong> {selectedRecord.customData.gasUsed}</Paragraph>
+                      )}
+                      {selectedRecord.customData.gasLimit && (
+                        <Paragraph><strong>Gas限制:</strong> {selectedRecord.customData.gasLimit}</Paragraph>
+                      )}
                     </Col>
                   </Row>
-                  <Paragraph>
-                    <strong>链上数据内容:</strong>
-                    <br />
-                    <Text code style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: '12px' }}>
-                      {selectedRecord.customData.content}
-                    </Text>
-                  </Paragraph>
-                </>
-              )}
-              
-              {/* 转账记录只显示链上备注，不显示本地备注 */}
-              {selectedRecord.dataType === 'transfer' && selectedRecord.onChainMemo && (
-                <>
-                  <Divider>链上信息</Divider>
-                  <Paragraph>
-                    <strong>链上备注:</strong> {selectedRecord.onChainMemo}
-                    <Badge status="success" text="从链上读取" style={{ marginLeft: 8 }} />
-                  </Paragraph>
-                </>
-              )}
-              
-              {/* 非转账记录显示完整备注信息 */}
-              {selectedRecord.dataType !== 'transfer' && selectedRecord.customData && typeof selectedRecord.customData === 'object' && (
-                <>
-                  <Divider>备注信息</Divider>
-                  {selectedRecord.customData.memo && (
-                    <Paragraph>
-                      <strong>本地备注:</strong> {selectedRecord.customData.memo}
-                      {selectedRecord.customData.memoIncludedOnChain ? (
-                        <Badge status="success" text="已写入区块链" style={{ marginLeft: 8 }} />
-                      ) : (
-                        <Badge status="warning" text="仅本地存储" style={{ marginLeft: 8 }} />
-                      )}
-                    </Paragraph>
-                  )}
-                  {selectedRecord.onChainMemo && (
-                    <Paragraph>
-                      <strong>链上备注:</strong> {selectedRecord.onChainMemo}
-                      <Badge status="success" text="从链上读取" style={{ marginLeft: 8 }} />
-                    </Paragraph>
-                  )}
-                  {selectedRecord.customData.onChainMemo && selectedRecord.customData.onChainMemo !== selectedRecord.onChainMemo && (
-                    <Paragraph>
-                      <strong>存储的链上备注:</strong> {selectedRecord.customData.onChainMemo}
-                      <Badge status="success" text="链上数据" style={{ marginLeft: 8 }} />
-                    </Paragraph>
-                  )}
-                  {!selectedRecord.customData.memo && !selectedRecord.onChainMemo && !selectedRecord.customData.onChainMemo && (
-                    <Paragraph>
-                      <Text type="secondary">该交易无备注信息</Text>
-                    </Paragraph>
-                  )}
-                  {selectedRecord.customData.isContract !== undefined && (
-                    <Paragraph><strong>目标类型:</strong> {selectedRecord.customData.isContract ? '智能合约' : '普通地址'}</Paragraph>
-                  )}
-                </>
-              )}
 
-              {/* 非转账记录的存储数据 */}
-              {selectedRecord.dataType !== 'transfer' && selectedRecord.customData && typeof selectedRecord.customData === 'string' && (
-                <>
-                  <Divider>存储的数据</Divider>
-                  <Paragraph>
-                    <Text code style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-                      {selectedRecord.customData}
+                  {/* 交易哈希和区块号 */}
+                  <Paragraph><strong>交易哈希:</strong> 
+                    <Text code style={{ fontSize: '11px', wordBreak: 'break-all' }}>
+                      {selectedRecord.customData.transactionHash || selectedRecord.txHash}
                     </Text>
                   </Paragraph>
+                  <Paragraph><strong>区块号:</strong> {selectedRecord.customData.blockNumber || selectedRecord.blockNumber}</Paragraph>
+
+                  {/* 链上内容 */}
+                  {selectedRecord.customData.onChainContent && (
+                    <Paragraph>
+                      <strong>链上内容:</strong>
+                      <br />
+                      <Text code style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: '12px' }}>
+                        {selectedRecord.customData.onChainContent}
+                      </Text>
+                    </Paragraph>
+                  )}
+
+                  {/* Input Data */}
+                  {selectedRecord.customData.inputData && selectedRecord.customData.inputData !== '0x' && (
+                    <Paragraph>
+                      <strong>Input Data:</strong>
+                      <br />
+                      <Text code style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: '12px' }}>
+                        {selectedRecord.customData.inputData}
+                      </Text>
+                    </Paragraph>
+                  )}
                 </>
               )}
             </div>
