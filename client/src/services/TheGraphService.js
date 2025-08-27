@@ -10,8 +10,7 @@ class TheGraphService {
       // 以太坊主网
       'ethereum': 'https://api.thegraph.com/subgraphs/name/your-username/mask-truffle-ai-mainnet',
       // 测试网络
-      'goerli': 'https://api.thegraph.com/subgraphs/name/your-username/mask-truffle-ai-goerli',
-      'sepolia': 'https://api.thegraph.com/subgraphs/name/your-username/mask-truffle-ai-sepolia',
+      'sepolia': 'https://api.studio.thegraph.com/query/119163/info/v0.0.3',
       // 本地开发
       'hardhat': 'http://localhost:8000/subgraphs/name/mask-truffle-ai',
       'ganache': 'http://localhost:8000/subgraphs/name/mask-truffle-ai'
@@ -61,6 +60,17 @@ class TheGraphService {
           dataHash
           blockNumber
           transactionHash
+          value
+          toAddress
+          fromAddress
+          transactionHash
+          blockNumber
+          contractAddress
+          inputData
+          onChainContent
+          transactionTime
+          transactionFee
+          gasPrice
         }
       }
     `;
@@ -80,6 +90,15 @@ class TheGraphService {
         dataHash: event.dataHash,
         blockNumber: event.blockNumber,
         txHash: event.transactionHash,
+        value: event.value,
+        toAddress: event.toAddress,
+        fromAddress: event.fromAddress,
+        contractAddress: event.contractAddress,
+        inputData: event.inputData,
+        onChainContent: event.onChainContent,
+        transactionTime: event.transactionTime,
+        transactionFee: event.transactionFee,
+        gasPrice: event.gasPrice,
         source: 'thegraph'
       }));
     } catch (error) {
@@ -112,6 +131,17 @@ class TheGraphService {
           dataHash
           blockNumber
           transactionHash
+          value
+          toAddress
+          fromAddress
+          transactionHash
+          blockNumber
+          contractAddress
+          inputData
+          onChainContent
+          transactionTime
+          transactionFee
+          gasPrice
         }
       }
     `;
@@ -131,6 +161,15 @@ class TheGraphService {
         dataHash: event.dataHash,
         blockNumber: event.blockNumber,
         txHash: event.transactionHash,
+        value: event.value,
+        toAddress: event.toAddress,
+        fromAddress: event.fromAddress,
+        contractAddress: event.contractAddress,
+        inputData: event.inputData,
+        onChainContent: event.onChainContent,
+        transactionTime: event.transactionTime,
+        transactionFee: event.transactionFee,
+        gasPrice: event.gasPrice,
         source: 'thegraph'
       }));
     } catch (error) {
@@ -154,7 +193,7 @@ class TheGraphService {
           orderBy: timestamp
           orderDirection: desc
         ) {
-          id
+         id
           logId
           creator
           dataType
@@ -163,6 +202,17 @@ class TheGraphService {
           dataHash
           blockNumber
           transactionHash
+          value
+          toAddress
+          fromAddress
+          transactionHash
+          blockNumber
+          contractAddress
+          inputData
+          onChainContent
+          transactionTime
+          transactionFee
+          gasPrice
         }
       }
     `;
@@ -182,6 +232,15 @@ class TheGraphService {
         dataHash: event.dataHash,
         blockNumber: event.blockNumber,
         txHash: event.transactionHash,
+        value: event.value,
+        toAddress: event.toAddress,
+        fromAddress: event.fromAddress,
+        contractAddress: event.contractAddress,
+        inputData: event.inputData,
+        onChainContent: event.onChainContent,
+        transactionTime: event.transactionTime,
+        transactionFee: event.transactionFee,
+        gasPrice: event.gasPrice,
         source: 'thegraph'
       }));
     } catch (error) {
@@ -208,6 +267,17 @@ class TheGraphService {
           dataHash
           blockNumber
           transactionHash
+          value
+          toAddress
+          fromAddress
+          transactionHash
+          blockNumber
+          contractAddress
+          inputData
+          onChainContent
+          transactionTime
+          transactionFee
+          gasPrice
         }
       }
     `;
@@ -232,6 +302,15 @@ class TheGraphService {
         dataHash: event.dataHash,
         blockNumber: event.blockNumber,
         txHash: event.transactionHash,
+        value: event.value,
+        toAddress: event.toAddress,
+        fromAddress: event.fromAddress,
+        contractAddress: event.contractAddress,
+        inputData: event.inputData,
+        onChainContent: event.onChainContent,
+        transactionTime: event.transactionTime,
+        transactionFee: event.transactionFee,
+        gasPrice: event.gasPrice,
         source: 'thegraph'
       };
     } catch (error) {
@@ -255,7 +334,7 @@ class TheGraphService {
           orderBy: timestamp
           orderDirection: desc
         ) {
-          id
+         id
           logId
           creator
           dataType
@@ -264,6 +343,17 @@ class TheGraphService {
           dataHash
           blockNumber
           transactionHash
+          value
+          toAddress
+          fromAddress
+          transactionHash
+          blockNumber
+          contractAddress
+          inputData
+          onChainContent
+          transactionTime
+          transactionFee
+          gasPrice
         }
       }
     `;
@@ -283,6 +373,15 @@ class TheGraphService {
         dataHash: event.dataHash,
         blockNumber: event.blockNumber,
         txHash: event.transactionHash,
+        value: event.value,
+        toAddress: event.toAddress,
+        fromAddress: event.fromAddress,
+        contractAddress: event.contractAddress,
+        inputData: event.inputData,
+        onChainContent: event.onChainContent,
+        transactionTime: event.transactionTime,
+        transactionFee: event.transactionFee,
+        gasPrice: event.gasPrice,
         source: 'thegraph'
       }));
     } catch (error) {
@@ -305,13 +404,26 @@ class TheGraphService {
           orderBy: timestamp
           orderDirection: desc
         ) {
-          id
-          logIds
+         id
+          logId
           creator
           dataType
+          content
           timestamp
+          dataHash
           blockNumber
           transactionHash
+          value
+          toAddress
+          fromAddress
+          transactionHash
+          blockNumber
+          contractAddress
+          inputData
+          onChainContent
+          transactionTime
+          transactionFee
+          gasPrice
         }
       }
     `;
@@ -394,7 +506,7 @@ class TheGraphService {
           orderBy: timestamp
           orderDirection: desc
         ) {
-          id
+         id
           logId
           creator
           dataType
@@ -403,6 +515,17 @@ class TheGraphService {
           dataHash
           blockNumber
           transactionHash
+          value
+          toAddress
+          fromAddress
+          transactionHash
+          blockNumber
+          contractAddress
+          inputData
+          onChainContent
+          transactionTime
+          transactionFee
+          gasPrice
         }
       }
     `;
@@ -422,6 +545,15 @@ class TheGraphService {
         dataHash: event.dataHash,
         blockNumber: event.blockNumber,
         txHash: event.transactionHash,
+        value: event.value,
+        toAddress: event.toAddress,
+        fromAddress: event.fromAddress,
+        contractAddress: event.contractAddress,
+        inputData: event.inputData,
+        onChainContent: event.onChainContent,
+        transactionTime: event.transactionTime,
+        transactionFee: event.transactionFee,
+        gasPrice: event.gasPrice,
         source: 'thegraph'
       }));
     } catch (error) {

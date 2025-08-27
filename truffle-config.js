@@ -1,20 +1,20 @@
-const HDWalletProvider = require('@truffle/hdwallet-provider');
+const HDWalletProvider = require("@truffle/hdwallet-provider");
 
-require('dotenv').config();
-console.log(process.env.INFURA_PROJECT_ID,"❀")
+require("dotenv").config();
+console.log(process.env.INFURA_PROJECT_ID, "❀");
 module.exports = {
   networks: {
     development: {
-      host: '127.0.0.1',
+      host: "127.0.0.1",
       port: 7545, // Ganache GUI 默认端口
-      network_id: '*',
+      network_id: "*",
       gas: 6721975,
       gasPrice: 20000000000,
     },
     sepolia: {
       provider: () =>
         new HDWalletProvider(
-          [process.env.PRIVATE_KEY], 
+          [process.env.PRIVATE_KEY],
           `https://sepolia.infura.io/v3/${process.env.INFURA_PROJECT_ID}`,
           0, // address_index
           1, // num_addresses
@@ -36,7 +36,7 @@ module.exports = {
   },
   compilers: {
     solc: {
-      version: '0.8.19',
+      version: "0.8.19",
       settings: {
         optimizer: {
           enabled: true,
@@ -44,6 +44,10 @@ module.exports = {
         },
       },
     },
+  },
+  plugins: ["truffle-plugin-verify"],
+  api_keys: {
+    etherscan: process.env.ETHERSCAN_API_KEY || "",
   },
   db: {
     enabled: false,

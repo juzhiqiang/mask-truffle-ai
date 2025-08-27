@@ -39,15 +39,16 @@
   },
   "homepage": "https://github.com/juzhiqiang/mask-truffle-ai#readme",
   "devDependencies": {
+    "@ganache/cli": "^0.10.2",
     "@truffle/hdwallet-provider": "^2.1.15",
-    "truffle": "^5.11.5",
-    "dotenv": "^16.4.0",
     "chai": "^4.4.0",
+    "dotenv": "^16.4.0",
     "ganache": "^7.9.2",
-    "@ganache/cli": "^0.10.2"
+    "truffle": "^5.11.5"
   },
   "dependencies": {
-    "@openzeppelin/contracts": "^4.9.3"
+    "@openzeppelin/contracts": "^4.9.3",
+    "truffle-plugin-verify": "^0.6.7"
   },
   "engines": {
     "node": ">=16.0.0",
