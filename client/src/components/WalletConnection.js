@@ -6,14 +6,15 @@ import { WalletOutlined, DisconnectOutlined, SwapOutlined, CopyOutlined, CheckOu
 import { ethers } from 'ethers';
 
 const injectedConnector = new InjectedConnector({
-  supportedChainIds: [1, 5, 11155111, 1337],
+  supportedChainIds: [1, 5, 11155111, 1337,5777],
 });
 
 const NETWORKS = {
   1: { name: 'Ethereum 主网', shortName: 'ETH 主网', symbol: 'ETH', color: '#627eea', blockExplorer: 'https://etherscan.io' },
   5: { name: 'Goerli 测试网', shortName: 'Goerli', symbol: 'GoerliETH', color: '#f6c343', blockExplorer: 'https://goerli.etherscan.io' },
   11155111: { name: 'Sepolia 测试网', shortName: 'Sepolia', symbol: 'SepoliaETH', color: '#ff6b6b', blockExplorer: 'https://sepolia.etherscan.io' },
-  1337: { name: '本地开发链', shortName: '本地链', symbol: 'LocalETH', color: '#95de64', blockExplorer: 'http://127.0.0.1:7545' }
+  1337: { name: '本地开发链', shortName: 'localhost', symbol: 'localhost', color: '#95de64', blockExplorer: 'http://127.0.0.1:7545' },
+  5777: { name: 'Ganache 本地链', shortName: 'Ganache', symbol: 'ETH', color: '#95de64', blockExplorer: 'http://127.0.0.1:7545' }
 };
 
 const WalletConnection = ({ onAccountChange }) => {
@@ -220,7 +221,7 @@ const WalletConnection = ({ onAccountChange }) => {
                 symbol: network.symbol,
                 decimals: 18,
               },
-              rpcUrls: ['http://localhost:8545'],
+              rpcUrls: targetChainId === 5777 ? ['http://127.0.0.1:7545'] : ['http://localhost:7545'],
               blockExplorerUrls: network.blockExplorer ? [network.blockExplorer] : [],
             }],
           });
@@ -355,15 +356,15 @@ const WalletConnection = ({ onAccountChange }) => {
         type: 'group',
         children: [
           {
-            key: '1337',
+            key: '5777',
             label: (
               <Space>
-                <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: NETWORKS[1337].color }} />
-                {NETWORKS[1337].name}
+                <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: NETWORKS[5777].color }} />
+                {NETWORKS[5777].name}
               </Space>
             ),
-            disabled: chainId === 1337,
-            onClick: () => switchNetwork(1337)
+            disabled: chainId === 5777,
+            onClick: () => switchNetwork(5777)
           }
         ]
       }

@@ -2,8 +2,8 @@
   "network": "development",
   "contracts": {
     "DataLogContract": {
-      "address": "0x7D379A1D64691f83c280cD8EF827Aa24cE438eCF"
+      "address": "0x0768fCaf56dD570F76444Cd339a985368eb48274"
     }
   },
-  "deployedAt": "2025-08-27T06:32:10.845Z"
+  "deployedAt": "2025-08-27T06:41:02.939Z"
 }
