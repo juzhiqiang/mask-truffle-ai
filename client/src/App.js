@@ -202,18 +202,18 @@ function AppContent() {
     }
   };
 
-  // 从The Graph加载数据
+  // 从The Graph加载最近的数据（用户手动刷新时）
   const loadGraphData = async () => {
-    if (!graphDataEnabled || !account) return;
+    if (!graphDataEnabled || !theGraphService.isAvailable()) return;
 
     setGraphDataLoading(true);
     try {
-      // 获取用户的链上数据
-      const userData = await theGraphService.getDataByCreator(account, 50);
-      console.log('Loaded Graph data:', userData);
+      // 获取最近20条链上数据，按时间戳降序排列
+      const recentData = await theGraphService.getAllDataStoredEvents(20, 0, 'timestamp', 'desc');
+      console.log('Loaded recent Graph data:', recentData);
       
       // 转换为应用内的记录格式
-      const formattedRecords = userData.map(data => ({
+      const formattedRecords = recentData.map(data => ({
         id: data.id,
         logId: data.logId,
         creator: data.creator,
@@ -260,6 +260,7 @@ function AppContent() {
         }
       }));
 
+      // 替换现有数据而不是合并，确保显示最新的20条
       setGraphRecords(formattedRecords);
     } catch (error) {
       console.error('Failed to load Graph data:', error);
@@ -280,13 +281,10 @@ function AppContent() {
       console.log('查询刚上链的数据:', { txHash, logId });
       
       // 等待一小段时间让数据同步到 The Graph
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise(resolve => setTimeout(resolve, 3000));
       
-      // 使用交易哈希查询刚上链的数据
-      const allData = await theGraphService.getAllDataStoredEvents(100, 0);
-      const freshData = allData.filter(data => 
-        data.txHash && data.txHash.toLowerCase() === txHash.toLowerCase()
-      );
+      // 使用专门的交易哈希查询方法，精确查询新上链的数据
+      const freshData = await theGraphService.getDataByTransactionHash(txHash);
       
       if (freshData.length > 0) {
         console.log('找到刚上链的数据:', freshData);
@@ -315,7 +313,7 @@ function AppContent() {
           transactionFee: data.transactionFee,
           gasPrice: data.gasPrice,
           customData: {
-            messageType: data.dataType, // 使用 dataType 作为 messageType
+            messageType: data.dataType,
             value: data.value,
             toAddress: data.toAddress,
             fromAddress: data.fromAddress,
@@ -329,7 +327,6 @@ function AppContent() {
             gasPrice: data.gasPrice,
             gasUsed: data.gasUsed || '0',
             gasLimit: data.gasLimit || '0',
-            // 保留其他字段用于兼容性
             logId: data.logId,
             dataType: data.dataType,
             content: data.content,
@@ -339,27 +336,33 @@ function AppContent() {
           }
         }));
 
-        // 合并到现有的 graphRecords 中，去重
-        const existingHashes = new Set(graphRecords.map(r => r.txHash));
-        const newRecords = formattedRecords.filter(r => !existingHashes.has(r.txHash));
+        // 将新数据添加到表格最前面
+        setGraphRecords(prev => {
+          // 移除可能已存在的相同交易哈希记录（避免重复）
+          const filteredPrev = prev.filter(record => record.txHash !== txHash);
+          // 将新记录放到最前面
+          return [...formattedRecords, ...filteredPrev];
+        });
         
-        if (newRecords.length > 0) {
-          setGraphRecords(prev => [...newRecords, ...prev]);
-          
-          // 如果 The Graph 查询还未开启，自动开启以显示刚上链的数据
-          if (!graphDataEnabled) {
-            setGraphDataEnabled(true);
-          }
-          
-          message.success('已从链上查询到刚上传的日志数据');
+        // 如果 The Graph 查询还未开启，自动开启以显示刚上链的数据
+        if (!graphDataEnabled) {
+          setGraphDataEnabled(true);
         }
+        
+        message.success('已从链上查询到刚上传的日志数据，已添加到记录最前面');
       } else {
         console.log('The Graph 中暂未找到刚上链的数据，可能需要更多时间同步');
+        // 可以设置一个重试机制
+        setTimeout(() => {
+          console.log('重试查询刚上链的数据...');
+          queryFreshChainData(txHash, logId);
+        }, 5000);
       }
     } catch (error) {
       console.error('查询刚上链的数据失败:', error);
     }
   };
+  // 通过交易哈希搜索 The Graph 历史数据
   const searchByTransactionHash = async (txHash) => {
     if (!txHash || txHash.length < 10) {
       message.warning('请输入有效的交易哈希');
@@ -373,14 +376,11 @@ function AppContent() {
 
     setGraphDataLoading(true);
     try {
-      // 使用 The Graph 搜索所有数据，然后筛选匹配的交易哈希
-      const allData = await theGraphService.getAllDataStoredEvents(1000, 0);
-      const matchedData = allData.filter(data => 
-        data.txHash && data.txHash.toLowerCase().includes(txHash.toLowerCase())
-      );
+      // 使用专门的交易哈希查询方法
+      const matchedData = await theGraphService.getDataByTransactionHash(txHash);
       
       if (matchedData.length > 0) {
-        // 转换为应用内的记录格式并添加到 graphRecords
+        // 转换为应用内的记录格式
         const formattedRecords = matchedData.map(data => ({
           id: data.id,
           logId: data.logId,
@@ -404,7 +404,7 @@ function AppContent() {
           transactionFee: data.transactionFee,
           gasPrice: data.gasPrice,
           customData: {
-            messageType: data.dataType, // 使用 dataType 作为 messageType
+            messageType: data.dataType,
             value: data.value,
             toAddress: data.toAddress,
             fromAddress: data.fromAddress,
@@ -418,7 +418,6 @@ function AppContent() {
             gasPrice: data.gasPrice,
             gasUsed: data.gasUsed || '0',
             gasLimit: data.gasLimit || '0',
-            // 保留其他字段用于兼容性
             logId: data.logId,
             dataType: data.dataType,
             content: data.content,
@@ -428,18 +427,13 @@ function AppContent() {
           }
         }));
 
-        // 合并到现有的 graphRecords 中，去重
-        const existingHashes = new Set(graphRecords.map(r => r.txHash));
-        const newRecords = formattedRecords.filter(r => !existingHashes.has(r.txHash));
-        
-        if (newRecords.length > 0) {
-          setGraphRecords(prev => [...newRecords, ...prev]);
-          message.success(`找到 ${matchedData.length} 条相关的链上数据记录`);
-        } else {
-          message.info('该交易哈希的数据已经在记录中');
-        }
+        // 替换现有数据，只显示搜索到的交易数据
+        setGraphRecords(formattedRecords);
+        message.success(`找到 ${matchedData.length} 条该交易哈希的链上数据记录`);
       } else {
-        message.info('未找到相关的链上数据记录');
+        // 如果没找到数据，清空现有记录
+        setGraphRecords([]);
+        message.info('未找到该交易哈希的链上数据记录');
       }
     } catch (error) {
       console.error('交易哈希搜索失败:', error);
@@ -1175,34 +1169,29 @@ function AppContent() {
   // 交易记录表格列定义
   const transactionColumns = [
     {
-      title: '类型',
-      dataIndex: 'token',
-      key: 'token',
-      render: (token, record) => {
-        let color = 'blue';
-        let text = token;
-        
-        if (record.dataType === 'chaindata') {
-          color = 'purple';
-          text = record.customData?.dataType || 'DATA';
-        } else if (token === 'ETH') {
-          color = 'blue';
-        } else if (token === 'USDT') {
-          color = 'green';
+      title: '交易哈希',
+      dataIndex: 'txHash',
+      key: 'txHash',
+      render: (txHash, record) => {
+        if (txHash) {
+          return `${txHash.slice(0, 10)}...${txHash.slice(-8)}`;
         }
-        
-        return <Badge color={color} text={text} />;
+        return '-';
       }
     },
     {
-      title: '金额/数据',
-      dataIndex: 'amount',
-      key: 'amount',
-      render: (amount, record) => {
-        if (record.dataType === 'chaindata') {
-          return <span style={{ color: '#722ed1' }}>链上数据 #{record.customData?.logId}</span>;
+      title: '交易金额',
+      dataIndex: 'value',
+      key: 'value',
+      render: (value, record) => {
+        // 优先显示 customData 中的 value，然后是记录本身的 value
+        const transactionValue = record.customData?.value || record.value || '0';
+        
+        if (transactionValue && transactionValue !== '0') {
+          return `${transactionValue} ETH`;
         }
-        return `${amount} ${record.token}`;
+        
+        return '0 ETH';
       }
     },
     {
@@ -1279,10 +1268,6 @@ function AppContent() {
               <ETHTransferForm />
             </TabPane>
 
-            <TabPane tab={<span><SendOutlined />USDT 转账</span>} key="usdt-transfer">
-              <USDTTransferForm />
-            </TabPane>
-
             <TabPane tab={<span><FileTextOutlined />日志上链</span>} key="log-upload">
               <LogUploadForm />
             </TabPane>
@@ -1292,7 +1277,7 @@ function AppContent() {
         {/* 记录展示区域 - 独立于标签页 */}
         <Row gutter={24}>
           {/* ETH转账记录 */}
-          <Col span={8}>
+          <Col span={24}>
             <Card 
               title={<span><SendOutlined /> ETH转账记录</span>}
               extra={
@@ -1317,74 +1302,8 @@ function AppContent() {
                 columns={transactionColumns}
                 dataSource={filteredEthRecords}
                 rowKey={(record) => record.id || record.txHash || Math.random()}
-                pagination={{ pageSize: 5, size: 'small' }}
-                scroll={{ x: 400 }}
-                size="small"
-              />
-            </Card>
-          </Col>
-
-          {/* USDT转账记录 */}
-          <Col span={8}>
-            <Card 
-              title={<span><SendOutlined /> USDT转账记录</span>}
-              extra={
-                <Badge 
-                  count={filteredUsdtRecords.length} 
-                  showZero 
-                  style={{ backgroundColor: '#52c41a' }} 
-                />
-              }
-            >
-              <div style={{ marginBottom: 16 }}>
-                <Input.Search
-                  placeholder="搜索USDT转账记录"
-                  value={searchText}
-                  onChange={(e) => setSearchText(e.target.value)}
-                  onSearch={(value) => setSearchText(value)}
-                  allowClear
-                  style={{ width: '100%' }}
-                />
-              </div>
-              <Table
-                columns={transactionColumns}
-                dataSource={filteredUsdtRecords}
-                rowKey={(record) => record.id || record.txHash || Math.random()}
-                pagination={{ pageSize: 5, size: 'small' }}
-                scroll={{ x: 400 }}
-                size="small"
-              />
-            </Card>
-          </Col>
-
-          {/* 日志上链记录 */}
-          <Col span={8}>
-            <Card 
-              title={<span><FileTextOutlined /> 日志上链记录</span>}
-              extra={
-                <Badge 
-                  count={filteredLogRecords.length} 
-                  showZero 
-                  style={{ backgroundColor: '#faad14' }} 
-                />
-              }
-            >
-              <div style={{ marginBottom: 16 }}>
-                <Input.Search
-                  placeholder="搜索日志上链记录"
-                  value={searchText}
-                  onChange={(e) => setSearchText(e.target.value)}
-                  onSearch={(value) => setSearchText(value)}
-                  allowClear
-                  style={{ width: '100%' }}
-                />
-              </div>
-              <Table
-                columns={transactionColumns}
-                dataSource={filteredLogRecords}
-                rowKey={(record) => record.id || record.txHash || Math.random()}
-                pagination={{ pageSize: 5, size: 'small' }}
-                scroll={{ x: 400 }}
+                pagination={{ pageSize: 10, size: 'small' }}
+                scroll={{ x: 600 }}
                 size="small"
               />
             </Card>
@@ -1465,16 +1384,7 @@ function AppContent() {
                 
                 {/* 搜索区域 */}
                 <Row gutter={16} style={{ marginBottom: 16 }}>
-                  <Col span={12}>
-                    <Input.Search
-                      placeholder="搜索链上数据记录（内容、类型、哈希等）"
-                      value={searchText}
-                      onChange={(e) => setSearchText(e.target.value)}
-                      onSearch={(value) => setSearchText(value)}
-                      allowClear
-                    />
-                  </Col>
-                  <Col span={12}>
+                  <Col span={24}>
                     <Input.Search
                       placeholder="输入交易哈希搜索历史数据"
                       onSearch={searchByTransactionHash}
@@ -1522,25 +1432,13 @@ function AppContent() {
                         <Paragraph><strong>转账金额:</strong> {selectedRecord.customData.value} ETH</Paragraph>
                       )}
                       {selectedRecord.customData.toAddress && (
-                        <Paragraph><strong>目标地址:</strong> 
-                          <Text code style={{ fontSize: '11px', wordBreak: 'break-all' }}>
-                            {selectedRecord.customData.toAddress}
-                          </Text>
-                        </Paragraph>
+                        <Paragraph><strong>目标地址:</strong> {selectedRecord.customData.toAddress}</Paragraph>
                       )}
                       {selectedRecord.customData.fromAddress && (
-                        <Paragraph><strong>来源地址:</strong> 
-                          <Text code style={{ fontSize: '11px', wordBreak: 'break-all' }}>
-                            {selectedRecord.customData.fromAddress}
-                          </Text>
-                        </Paragraph>
+                        <Paragraph><strong>来源地址:</strong> {selectedRecord.customData.fromAddress}</Paragraph>
                       )}
                       {selectedRecord.customData.contractAddress && (
-                        <Paragraph><strong>合约地址:</strong> 
-                          <Text code style={{ fontSize: '11px', wordBreak: 'break-all' }}>
-                            {selectedRecord.customData.contractAddress}
-                          </Text>
-                        </Paragraph>
+                        <Paragraph><strong>合约地址:</strong> {selectedRecord.customData.contractAddress}</Paragraph>
                       )}
                     </Col>
                     <Col span={12}>
@@ -1563,11 +1461,7 @@ function AppContent() {
                   </Row>
 
                   {/* 交易哈希和区块号 */}
-                  <Paragraph><strong>交易哈希:</strong> 
-                    <Text code style={{ fontSize: '11px', wordBreak: 'break-all' }}>
-                      {selectedRecord.customData.transactionHash || selectedRecord.txHash}
-                    </Text>
-                  </Paragraph>
+                  <Paragraph><strong>交易哈希:</strong> {selectedRecord.customData.transactionHash || selectedRecord.txHash}</Paragraph>
                   <Paragraph><strong>区块号:</strong> {selectedRecord.customData.blockNumber || selectedRecord.blockNumber}</Paragraph>
 
                   {/* 链上内容 */}
@@ -1575,9 +1469,7 @@ function AppContent() {
                     <Paragraph>
                       <strong>链上内容:</strong>
                       <br />
-                      <Text code style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: '12px' }}>
-                        {selectedRecord.customData.onChainContent}
-                      </Text>
+                      {selectedRecord.customData.onChainContent}
                     </Paragraph>
                   )}
 
@@ -1586,9 +1478,7 @@ function AppContent() {
                     <Paragraph>
                       <strong>Input Data:</strong>
                       <br />
-                      <Text code style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: '12px' }}>
-                        {selectedRecord.customData.inputData}
-                      </Text>
+                      {selectedRecord.customData.inputData}
                     </Paragraph>
                   )}
                 </>

@@ -249,6 +249,75 @@ class TheGraphService {
     }
   }
 
+  // 根据交易哈希查询数据
+  async getDataByTransactionHash(txHash) {
+    if (!this.currentEndpoint) {
+      throw new Error('The Graph endpoint not configured');
+    }
+
+    const query = gql`
+      query GetDataByTransactionHash($txHash: Bytes!) {
+        dataStoreds(
+          where: { transactionHash: $txHash }
+          orderBy: timestamp
+          orderDirection: desc
+        ) {
+          id
+          logId
+          creator
+          dataType
+          content
+          timestamp
+          dataHash
+          blockNumber
+          transactionHash
+          value
+          toAddress
+          fromAddress
+          transactionHash
+          blockNumber
+          contractAddress
+          inputData
+          onChainContent
+          transactionTime
+          transactionFee
+          gasPrice
+        }
+      }
+    `;
+
+    try {
+      const variables = { txHash: txHash.toLowerCase() };
+      const data = await request(this.currentEndpoint, query, variables);
+      
+      return data.dataStoreds.map(event => ({
+        id: event.id,
+        logId: event.logId,
+        creator: event.creator,
+        dataType: event.dataType,
+        content: event.content,
+        timestamp: parseInt(event.timestamp),
+        date: new Date(parseInt(event.timestamp) * 1000).toLocaleString(),
+        dataHash: event.dataHash,
+        blockNumber: event.blockNumber,
+        txHash: event.transactionHash,
+        value: event.value,
+        toAddress: event.toAddress,
+        fromAddress: event.fromAddress,
+        contractAddress: event.contractAddress,
+        inputData: event.inputData,
+        onChainContent: event.onChainContent,
+        transactionTime: event.transactionTime,
+        transactionFee: event.transactionFee,
+        gasPrice: event.gasPrice,
+        source: 'thegraph'
+      }));
+    } catch (error) {
+      console.error('Query data by transaction hash failed:', error);
+      throw new Error(`The Graph query failed: ${error.message}`);
+    }
+  }
+
   // 根据logId查询单条数据
   async getDataByLogId(logId) {
     if (!this.currentEndpoint) {
