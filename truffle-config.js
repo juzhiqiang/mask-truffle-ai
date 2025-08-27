@@ -10,13 +10,6 @@ module.exports = {
       gas: 6721975,
       gasPrice: 20000000000,
     },
-    ganache_cli: {
-      host: '127.0.0.1',
-      port: 8545,
-      network_id: 1337, // 固定网络ID
-      gas: 6721975,
-      gasPrice: 20000000000,
-    },
     sepolia: {
       provider: () =>
         new HDWalletProvider(
