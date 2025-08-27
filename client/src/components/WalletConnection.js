@@ -282,7 +282,7 @@ const WalletConnection = ({ onAccountChange }) => {
     const initial = address.slice(2, 4).toUpperCase();
     
     return (
-      <Avatar style={{ backgroundColor: color, fontSize: '12px', fontWeight: 'bold' }} size={32}>
+      <Avatar style={{ backgroundColor: color, fontSize: '12px', fontWeight: 'bold',lineHeight: '32px' }} size={32}>
         {initial}
       </Avatar>
     );

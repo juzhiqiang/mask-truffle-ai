@@ -152,7 +152,8 @@ function AppContent() {
         setEthBalance('0');
         setUsdtBalance('0');
         setNetwork(null);
-        setEthTransferRecords([]);
+        // 注意：保留ETH转账记录，用户搜索的数据不应该因断开钱包而消失
+        // setEthTransferRecords([]);
         setUsdtTransferRecords([]);
         setLogUploadRecords([]);
       }
@@ -356,22 +357,83 @@ function AppContent() {
 
   // 查询刚上链的日志数据
   const queryFreshChainData = async (txHash, logId) => {
+    console.log('开始查询刚上链的日志数据:', { txHash, logId });
+    
+    // 无论The Graph是否可用，都先创建一个本地记录显示给用户
+    const localRecord = {
+      id: txHash + '_local',
+      logId: logId,
+      creator: account,
+      dataType: 'chaindata',
+      token: 'LOG',
+      amount: `Log ${logId}`,
+      toAddress: 'Chain Storage',
+      fromAddress: account,
+      txHash: txHash,
+      blockNumber: '待确认',
+      status: 'success',
+      date: new Date().toLocaleString(),
+      timestamp: new Date().toISOString(),
+      onChainMemo: '日志数据已上链',
+      value: '0',
+      contractAddress: '合约地址',
+      inputData: '0x',
+      onChainContent: '日志上链成功',
+      customData: {
+        messageType: 'Log Upload',
+        value: '0',
+        toAddress: 'Chain Storage',
+        fromAddress: account,
+        transactionHash: txHash,
+        blockNumber: '待确认',
+        contractAddress: '合约地址',
+        inputData: '0x',
+        onChainContent: '日志数据已成功上链到区块链',
+        transactionTime: new Date().toLocaleString(),
+        transactionFee: '计算中...',
+        gasPrice: '计算中...',
+        gasUsed: '0',
+        gasLimit: '0',
+        logId: logId,
+        dataType: 'log',
+        content: '日志上链成功',
+        source: 'local'
+      }
+    };
+
+    // 立即添加本地记录到链上数据
+    setGraphRecords(prev => {
+      // 移除可能已存在的相同交易哈希记录（避免重复）
+      const filteredPrev = prev.filter(record => record.txHash !== txHash);
+      // 将新记录放到最前面
+      return [localRecord, ...filteredPrev];
+    });
+
+    // 如果 The Graph 查询还未开启，自动开启以显示刚上链的数据
+    if (!graphDataEnabled) {
+      setGraphDataEnabled(true);
+    }
+
+    message.success('日志已上链，正在同步到链上数据记录...');
+
+    // 如果The Graph服务不可用，只显示本地记录
     if (!theGraphService.isAvailable()) {
-      console.log('The Graph 服务不可用，无法查询刚上链的数据');
+      console.log('The Graph 服务不可用，显示本地记录');
       return;
     }
 
+    // 尝试从The Graph获取实际的链上数据
     try {
-      console.log('查询刚上链的数据:', { txHash, logId });
+      console.log('尝试从The Graph查询实际链上数据:', { txHash, logId });
       
-      // 等待一小段时间让数据同步到 The Graph
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      // 等待较长时间让数据同步到 The Graph
+      await new Promise(resolve => setTimeout(resolve, 5000));
       
       // 使用专门的交易哈希查询方法，精确查询新上链的数据
       const freshData = await theGraphService.getDataByTransactionHash(txHash);
       
       if (freshData.length > 0) {
-        console.log('找到刚上链的数据:', freshData);
+        console.log('找到The Graph链上数据:', freshData);
         
         // 转换为应用内的记录格式
         const formattedRecords = freshData.map(data => ({
@@ -379,7 +441,7 @@ function AppContent() {
           logId: data.logId,
           creator: data.creator,
           dataType: 'chaindata',
-          token: data.dataType || 'DATA',
+          token: data.dataType || 'LOG',
           amount: `Log ${data.logId}`,
           toAddress: data.toAddress || 'Chain Storage',
           fromAddress: data.fromAddress || data.creator,
@@ -420,30 +482,29 @@ function AppContent() {
           }
         }));
 
-        // 将新数据添加到表格最前面
+        // 用The Graph的真实数据替换本地记录
         setGraphRecords(prev => {
-          // 移除可能已存在的相同交易哈希记录（避免重复）
-          const filteredPrev = prev.filter(record => record.txHash !== txHash);
-          // 将新记录放到最前面
+          // 移除本地记录和可能已存在的相同交易哈希记录
+          const filteredPrev = prev.filter(record => 
+            record.txHash !== txHash && 
+            record.id !== (txHash + '_local')
+          );
+          // 将真实记录放到最前面
           return [...formattedRecords, ...filteredPrev];
         });
         
-        // 如果 The Graph 查询还未开启，自动开启以显示刚上链的数据
-        if (!graphDataEnabled) {
-          setGraphDataEnabled(true);
-        }
-        
-        message.success('已从链上查询到刚上传的日志数据，已添加到记录最前面');
+        message.success('已获取到完整的链上数据，记录已更新');
       } else {
-        console.log('The Graph 中暂未找到刚上链的数据，可能需要更多时间同步');
+        console.log('The Graph 中暂未找到刚上链的数据，保持本地记录');
         // 可以设置一个重试机制
         setTimeout(() => {
           console.log('重试查询刚上链的数据...');
           queryFreshChainData(txHash, logId);
-        }, 5000);
+        }, 10000); // 10秒后重试
       }
     } catch (error) {
-      console.error('查询刚上链的数据失败:', error);
+      console.error('查询The Graph数据失败:', error);
+      console.log('保持本地记录显示');
     }
   };
   // 通过交易哈希搜索 The Graph 历史数据
@@ -511,12 +572,16 @@ function AppContent() {
           }
         }));
 
-        // 替换现有数据，只显示搜索到的交易数据
-        setGraphRecords(formattedRecords);
-        message.success(`找到 ${matchedData.length} 条该交易哈希的链上数据记录`);
+        // 与现有记录合并，如果记录已存在则移到最前面，不清除其他记录
+        setGraphRecords(prev => {
+          // 移除可能已存在的相同交易哈希记录（避免重复）
+          const filteredPrev = prev.filter(record => record.txHash !== txHash);
+          // 将新记录放到最前面
+          return [...formattedRecords, ...filteredPrev];
+        });
+        message.success(`找到 ${matchedData.length} 条该交易哈希的链上数据记录，已添加到最前面`);
       } else {
-        // 如果没找到数据，清空现有记录
-        setGraphRecords([]);
+        // 如果没找到数据，不清除现有记录，只显示提示
         message.info('未找到该交易哈希的链上数据记录');
       }
     } catch (error) {
@@ -729,20 +794,21 @@ function AppContent() {
         console.log('ETH链上交易记录已自动加载');
       } else {
         console.log('在最近的区块中没有找到ETH转账记录');
-        // 设置空数组，清除可能存在的旧记录
-        setEthTransferRecords([]);
+        // 注意：不清空现有记录，保持用户已搜索的数据
+        // setEthTransferRecords([]);
       }
     } catch (error) {
       console.error('获取链上ETH转账记录失败:', error);
-      // 设置空数组，确保界面状态正确
-      setEthTransferRecords([]);
+      // 注意：不清空现有记录，保持用户已搜索的数据
+      // setEthTransferRecords([]);
     }
   };
 
   // 初始化时不加载本地缓存数据
   const loadTransactionRecords = async () => {
     console.log('初始化交易记录状态（不从本地缓存加载）');
-    setEthTransferRecords([]);
+    // 注意：不清空ETH转账记录，保持用户已搜索的数据
+    // setEthTransferRecords([]);
     setUsdtTransferRecords([]);
     setLogUploadRecords([]);
   };
@@ -870,39 +936,46 @@ function AppContent() {
       );
 
       // 保存交易记录 - 格式与查询时保持一致
+      const timestamp = Date.now();
       const ethRecord = {
         dataType: 'transfer',
         txHash: result.txHash,
         amount: result.amount,
         value: result.amount,
         token: 'ETH',
-        toAddress: result.toAddress || values.toAddress,
-        fromAddress: result.fromAddress,
-        inputData: result.inputData || '0x',
+        toAddress: result.to || values.toAddress,
+        fromAddress: result.from,
+        inputData: result.transaction?.data || '0x',
         blockNumber: result.blockNumber,
         status: result.status,
         gasUsed: result.gasUsed,
-        onChainMemo: values.memo || '',
+        onChainMemo: result.memo || values.memo || '',
         id: result.txHash,
-        timestamp: new Date().toISOString(),
-        date: new Date().toLocaleString(),
+        timestamp: new Date(timestamp).toISOString(),
+        date: new Date(timestamp).toLocaleString(),
         customData: { 
-          memo: values.memo || '',
-          memoIncludedOnChain: result.memoIncludedOnChain || false,
-          isContract: result.isContract || false,
+          memo: result.memo || values.memo || '',
+          memoIncludedOnChain: result.hasMemoOnChain || false,
+          isContract: result.isContractInteraction || false,
           // 添加与查询格式一致的完整交易详情
           messageType: 'ETH Transfer',
           value: result.amount,
-          toAddress: result.toAddress || values.toAddress,
-          fromAddress: result.fromAddress,
+          toAddress: result.to || values.toAddress,
+          fromAddress: result.from,
           transactionHash: result.txHash,
           blockNumber: result.blockNumber,
-          onChainContent: values.memo || 'ETH Transfer',
-          transactionTime: new Date().toLocaleString(),
-          transactionFee: '计算中...',
-          gasPrice: '计算中...',
+          onChainContent: result.memo || values.memo || 'ETH Transfer',
+          transactionTime: new Date(timestamp).toLocaleString(),
+          // 使用实际的交易费用数据
+          transactionFee: result.gasCostETH ? result.gasCostETH + ' ETH' : '计算中...',
+          gasPrice: result.transaction?.gasPrice ? 
+            ethers.utils.formatUnits(result.transaction.gasPrice, 'gwei') + ' Gwei' :
+            (result.transaction?.maxFeePerGas ? 
+              ethers.utils.formatUnits(result.transaction.maxFeePerGas, 'gwei') + ' Gwei' : 
+              '计算中...'),
           gasUsed: result.gasUsed || '0',
-          gasLimit: '0'
+          gasLimit: result.transaction?.gasLimit?.toString() || '0',
+          confirmations: result.confirmations || 0
         }
       };
 
@@ -1187,10 +1260,27 @@ function AppContent() {
       message.success(`🎉 日志上链成功！合约地址: ${contractAddress.slice(0, 6)}...${contractAddress.slice(-4)}`);
       logUploadForm.resetFields();
 
-      // 查询刚上链的数据并显示在链上数据记录中
-      if (result.txHash && result.logId) {
-        queryFreshChainData(result.txHash, result.logId);
+      // 等待2秒后通过交易哈希搜索获取数据并同步到链上数据记录
+      if (result.txHash) {
+        setTimeout(async () => {
+          try {
+            console.log('2秒后开始通过交易哈希搜索同步链上数据:', result.txHash);
+            
+            // 调用现有的交易哈希搜索方法
+            await searchByTransactionHash(result.txHash);
+            
+            // 如果搜索成功，提示用户
+            console.log('链上数据已通过交易哈希搜索同步');
+          } catch (error) {
+            console.error('同步链上数据失败:', error);
+          }
+        }, 2000);
       }
+
+      // 移除原来的queryFreshChainData调用，改用上面的方法
+      // if (result.txHash && result.logId) {
+      //   queryFreshChainData(result.txHash, result.logId);
+      // }
 
       // 获取最新交易记录
       fetchLatestOnChainTransactions(account);
@@ -1573,13 +1663,13 @@ function AppContent() {
                       {selectedRecord.customData.messageType && (
                         <Paragraph><strong>消息类型:</strong> {selectedRecord.customData.messageType}</Paragraph>
                       )}
-                      {selectedRecord.customData.value || selectedRecord.value && (
+                      {(selectedRecord.customData.value || selectedRecord.value) && (
                         <Paragraph><strong>转账金额:</strong> {selectedRecord.customData.value || selectedRecord.value} ETH</Paragraph>
                       )}
-                      {selectedRecord.customData.toAddress || selectedRecord.toAddress && (
+                      {(selectedRecord.customData.toAddress || selectedRecord.toAddress) && (
                         <Paragraph><strong>目标地址:</strong> {selectedRecord.customData.toAddress || selectedRecord.toAddress}</Paragraph>
                       )}
-                      {selectedRecord.customData.fromAddress || selectedRecord.fromAddress && (
+                      {(selectedRecord.customData.fromAddress || selectedRecord.fromAddress) && (
                         <Paragraph><strong>来源地址:</strong> {selectedRecord.customData.fromAddress || selectedRecord.fromAddress}</Paragraph>
                       )}
                     </Col>

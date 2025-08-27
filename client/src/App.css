@@ -485,3 +485,8 @@ textarea.ant-input {
     padding: 12px;
   }
 }
+
+/* 修复 Ant Design Layout Header 的 line-height */
+:where(.css-dev-only-do-not-override-1v28nim).ant-layout-header {
+  line-height: 0;
+}
