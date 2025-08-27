@@ -10,13 +10,6 @@ module.exports = {
       gas: 6721975,
       gasPrice: 20000000000,
     },
-    ganache: {
-      host: '127.0.0.1',
-      port: 8545, // Ganache CLI 默认端口
-      network_id: '*',
-      gas: 6721975,
-      gasPrice: 20000000000,
-    },
     ganache_cli: {
       host: '127.0.0.1',
       port: 8545,
